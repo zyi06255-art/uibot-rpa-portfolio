@@ -1,0 +1,422 @@
+// ===== 自适应解析（ZJB0001-001）=====
+
+Dim iRet, objDatabase, dbConnected
+dbConnected = false
+
+Try
+    objDatabase = Database.CreateDB("MySQL",{"host": "127.0.0.1", "port": "3306", "user": "root","password": "root","database": "rpa_bank_flow","charset": "utf8"})
+    dbConnected = true
+    TracePrint " MySQL连接成功"
+Catch ex
+    Log.Error " MySQL连接失败: " & CStr(ex)
+End Try
+
+If dbConnected = false
+    Log.Error " 数据库连接失败"
+Else
+    Try
+        Database.ExecuteSQL(objDatabase ,"DROP TABLE IF EXISTS tmp_flow_staging", {"args": []})
+        Database.ExecuteSQL(objDatabase ,"CREATE TABLE tmp_flow_staging (row_id INT AUTO_INCREMENT PRIMARY KEY, f_OurAccount VARCHAR(255), f_Belong VARCHAR(255), f_Currency VARCHAR(255), f_FlowDate VARCHAR(255), f_FlowTime VARCHAR(255), f_InAmount VARCHAR(255), f_OutAmount VARCHAR(255), f_Balance VARCHAR(255), f_OppAccount VARCHAR(255), f_OppName VARCHAR(255), f_Abstract VARCHAR(500), f_TransactionType VARCHAR(255))", {"args": []})
+        TracePrint " 临时表创建成功"
+    Catch ex
+        Log.Error " 临时表失败: " & CStr(ex)
+    End Try
+
+    Dim arrFiles, f, objExcel, arrData, allSuccess, fileProcessed
+    arrFiles = File.DirFileOrFolder("D:\\laiye\\ZJRB\\Excel-liushui", "fileandfolder", {"hasPath": true})
+    allSuccess = true
+    fileProcessed = 0
+
+    For Each f In arrFiles
+        Dim fileName, fileOpened
+        fileName = CStr(f)
+        If Right(fileName, 4) = ".xls" Or Right(fileName, 5) = ".xlsx"
+            TracePrint "--- 处理文件: " & fileName & " ---"
+            fileOpened = false
+            Try
+                objExcel = Excel.Open(fileName, false, "WPS", "", "")
+                fileOpened = true
+            Catch ex
+                TracePrint " 打开失败: " & CStr(ex)
+                allSuccess = false
+            End Try
+
+            If fileOpened
+                Dim sheetNames, activeSheet, rowCount
+                Try
+                    sheetNames = Excel.GetSheetsName(objExcel)
+                Catch ex
+                End Try
+
+                If IsArray(sheetNames)
+                    activeSheet = CStr(sheetNames[0])
+                    Try
+                        rowCount = Excel.GetRowsCount(objExcel, activeSheet)
+                        arrData = Excel.ReadRange(objExcel, activeSheet, "A1:AZ" & CStr(rowCount), false)
+                    Catch ex
+                        TracePrint " 读取失败: " & CStr(ex)
+                    End Try
+                End If
+
+                If IsArray(arrData)
+                    Dim totalRows, headerRow, bestScore, scanR, scanC
+                    totalRows = UBound(arrData)
+                    headerRow = -1
+                    bestScore = 0
+                    Dim scanEnd
+                    If totalRows > 30
+                        scanEnd = 30
+                    Else
+                        scanEnd = totalRows
+                    End If
+
+                    For scanR = 0 To scanEnd
+                        Dim rowScore, scanRowData
+                        rowScore = 0
+                        scanRowData = arrData[scanR]
+                        If IsArray(scanRowData)
+                            Dim scanMaxCol
+                            scanMaxCol = UBound(scanRowData)
+                            For scanC = 0 To scanMaxCol
+                                Dim scanCell
+                                scanCell = Trim(CStr(scanRowData[scanC]))
+                                If Regex.Test(scanCell, "交易时间|交易日期|记账日期|发生日期|起息日")
+                                    rowScore = rowScore + 1
+                                End If
+                                If Regex.Test(scanCell, "贷方金额|收入金额|贷方发生额|入账金额|贷方")
+                                    rowScore = rowScore + 1
+                                End If
+                                If Regex.Test(scanCell, "借方金额|支出金额|借方发生额|支取金额|借方")
+                                    rowScore = rowScore + 1
+                                End If
+                                If Regex.Test(scanCell, "余额|账户余额|账面余额|帐户余额")
+                                    rowScore = rowScore + 1
+                                End If
+                                If Regex.Test(scanCell, "对方账号|对方帐户|对方账户|对手账号|收付方账号")
+                                    rowScore = rowScore + 1
+                                End If
+                                If Regex.Test(scanCell, "对方户名|对方名称|对方单位|收付方名称")
+                                    rowScore = rowScore + 1
+                                End If
+                                If Regex.Test(scanCell, "摘要|用途|交易用途|附言|备注")
+                                    rowScore = rowScore + 1
+                                End If
+                            Next
+                        End If
+                        If rowScore > bestScore
+                            bestScore = rowScore
+                            headerRow = scanR
+                        End If
+                    Next
+
+                    If headerRow < 0 Or bestScore < 2
+                        TracePrint " 无法识别表头行"
+                    Else
+                        TracePrint " 表头行: " & CStr(headerRow + 1) & " 得分: " & CStr(bestScore)
+
+                        Dim colDate, colTime, colIncome, colExpense, colBalance
+                        Dim colOppAccount, colOppName, colAbstract
+                        colDate = -1
+                        colTime = -1
+                        colIncome = -1
+                        colExpense = -1
+                        colBalance = -1
+                        colOppAccount = -1
+                        colOppName = -1
+                        colAbstract = -1
+
+                        Dim hd, hc, hCell
+                        hd = arrData[headerRow]
+                        Dim hdMax
+                        hdMax = UBound(hd)
+                        For hc = 0 To hdMax
+                            hCell = Trim(CStr(hd[hc]))
+                            If colDate = -1 And Regex.Test(hCell, "交易日|交易日期|交易时间|记账日期|发生日期|起息日")
+                                colDate = hc
+                            End If
+                            If colTime = -1 And colDate <> hc And Regex.Test(hCell, "^交易时间$")
+                                colTime = hc
+                            End If
+                            If colIncome = -1 And Regex.Test(hCell, "贷方金额|收入金额|贷方发生额|入账金额")
+                                colIncome = hc
+                            End If
+                            If colExpense = -1 And Regex.Test(hCell, "借方金额|支出金额|借方发生额|支取金额")
+                                colExpense = hc
+                            End If
+                            If colBalance = -1 And Regex.Test(hCell, "余额|账户余额|账面余额")
+                                colBalance = hc
+                            End If
+                            If colOppAccount = -1 And Regex.Test(hCell, "对方账号|对方帐户|对方账户|对手账号|收付方账号")
+                                colOppAccount = hc
+                            End If
+                            If colOppName = -1 And Regex.Test(hCell, "对方户名|对方名称|对方单位|收付方名称|收.付.方名称")
+                                colOppName = hc
+                            End If
+                            If colAbstract = -1 And Regex.Test(hCell, "摘要|用途|交易用途|附言|备注")
+                                colAbstract = hc
+                            End If
+                        Next
+                        If colTime = -1
+                            colTime = colDate
+                        End If
+
+                        TracePrint " 列映射: date=" & CStr(colDate) & " time=" & CStr(colTime) & " in=" & CStr(colIncome) & " out=" & CStr(colExpense) & " bal=" & CStr(colBalance) & " oppAcct=" & CStr(colOppAccount) & " oppName=" & CStr(colOppName) & " abs=" & CStr(colAbstract)
+
+                        Dim ourAccount, belong, currency
+                        ourAccount = ""
+                        belong = ""
+                        currency = ""
+
+                        Dim metaR, metaC
+                        For metaR = 0 To headerRow - 1
+                            Dim metaRowData
+                            metaRowData = arrData[metaR]
+                            If IsArray(metaRowData)
+                                Dim metaMaxCol
+                                metaMaxCol = UBound(metaRowData)
+                                For metaC = 0 To metaMaxCol
+                                    Dim metaCell, metaNext
+                                    metaCell = Trim(CStr(metaRowData[metaC]))
+                                    If ourAccount = "" And Regex.Test(metaCell, "^账号[：:]|^银行账号[：:]|^账户[：:]|^帐号[：:]")
+                                        ourAccount = Regex.FindStr(metaCell, "[：:](.+)", 1)
+                                        If ourAccount = ""
+                                            If metaC + 1 <= metaMaxCol
+                                                metaNext = Trim(CStr(metaRowData[metaC + 1]))
+                                                If metaNext <> "" And metaNext <> "None" And Regex.Test(metaNext, "^\\d")
+                                                    ourAccount = metaNext
+                                                End If
+                                            End If
+                                        End If
+                                    End If
+                                    If belong = "" And Regex.Test(metaCell, "^户名[：:]|^账户名称[：:]|^帐号名称[：:]|^名称[：:]|^公司")
+                                        belong = Regex.FindStr(metaCell, "[：:](.+)", 1)
+                                        If belong = ""
+                                            If metaC + 1 <= metaMaxCol
+                                                metaNext = Trim(CStr(metaRowData[metaC + 1]))
+                                                If metaNext <> "" And metaNext <> "None"
+                                                    belong = metaNext
+                                                End If
+                                            End If
+                                        End If
+                                    End If
+                                    If currency = "" And Regex.Test(metaCell, "^币种[：:]|^货币[：:]")
+                                        If metaC + 1 <= metaMaxCol
+                                            metaNext = Trim(CStr(metaRowData[metaC + 1]))
+                                            If metaNext <> "" And metaNext <> "None"
+                                                currency = metaNext
+                                            End If
+                                        End If
+                                        If currency = ""
+                                            currency = Regex.FindStr(metaCell, "[：:](.+)", 1)
+                                        End If
+                                    End If
+                                Next
+                            End If
+                        Next
+
+                        If ourAccount = ""
+                            Dim fd
+                            fd = arrData[headerRow + 1]
+                            If IsArray(fd)
+                                ourAccount = Trim(CStr(fd[0]))
+                            End If
+                        End If
+                        If belong = ""
+                            Dim fd2
+                            fd2 = arrData[headerRow + 1]
+                            If IsArray(fd2)
+                                belong = Trim(CStr(fd2[1]))
+                            End If
+                        End If
+                        If currency = ""
+                            currency = "人民币"
+                        End If
+
+                        TracePrint " 元数据: acct=" & ourAccount & " belong=" & belong & " curr=" & currency
+
+                        Dim dr, dRow, dDate, dTime, dIn, dOut, dBal, dOpp, dOppNameVal, dAbs, dType
+                        Dim dataStart, rowProc
+                        dataStart = headerRow + 1
+                        rowProc = 0
+
+
+                        For dr = dataStart To totalRows
+                            Try
+                                dRow = arrData[dr]
+                                dDate = Trim(CStr(dRow[colDate]))
+                            Catch ex
+                                Break
+                            End Try
+                            If dDate = "" Or dDate = "None"
+                                Break
+                            End If
+                            If dDate = Trim(CStr(hd[colDate]))
+                                Break
+                            End If
+
+                            If Regex.Test(Trim(CStr(dRow[0])), "合计") Or (colAbstract >= 0 And Regex.Test(Trim(CStr(dRow[colAbstract])), "合计"))
+                                Break
+                            End If
+
+                            dTime = ""
+                            If colTime >= 0
+                                dTime = Trim(CStr(dRow[colTime]))
+                            End If
+                            If dTime = "" Or dTime = "None"
+                                dTime = ""
+                            End If
+                            If Regex.Test(dDate, " ")
+                                Dim dtParts
+                                dtParts = Split(dDate, " ")
+                                dTime = dtParts[1]
+                                dDate = dtParts[0]
+                            End If
+
+                            If Regex.Test(dDate, "[-/.]") = false
+                                dDate = Left(dDate, 4) & "-" & Left(Right(dDate, 4), 2) & "-" & Right(dDate, 2)
+                            End If
+                            dDate = Replace(Replace(dDate, "/", "-"), ".", "-")
+
+                            dIn = "0.00"
+                            If colIncome >= 0
+                                dIn = Trim(CStr(dRow[colIncome]))
+                            End If
+                            dOut = "0.00"
+                            If colExpense >= 0
+                                dOut = Trim(CStr(dRow[colExpense]))
+                            End If
+                            dBal = "0.00"
+                            If colBalance >= 0
+                                dBal = Trim(CStr(dRow[colBalance]))
+                            End If
+                            dOpp = ""
+                            If colOppAccount >= 0
+                                dOpp = Trim(CStr(dRow[colOppAccount]))
+                            End If
+                            dOppNameVal = ""
+                            If colOppName >= 0
+                                dOppNameVal = Trim(CStr(dRow[colOppName]))
+                            End If
+                            dAbs = ""
+                            If colAbstract >= 0
+                                dAbs = Trim(CStr(dRow[colAbstract]))
+                            End If
+
+                            If dIn = "" Or dIn = "None" Or Regex.Test(dIn, "^\\d+\\.?\\d*$") = false
+                                dIn = "0.00"
+                            End If
+                            If dOut = "" Or dOut = "None" Or Regex.Test(dOut, "^\\d+\\.?\\d*$") = false
+                                dOut = "0.00"
+                            End If
+                            If dBal = "" Or dBal = "None" Or Regex.Test(dBal, "^\\d+\\.?\\d*$") = false
+                                dBal = "0.00"
+                            End If
+                            // 金额四舍五入到2位小数（dIn）
+                            If Regex.Test(dIn, "\\.")
+                                Dim inParts, inInt, inFrac
+                                inParts = Split(dIn, ".")
+                                inInt = inParts[0]
+                                inFrac = inParts[1]
+                                If Len(inFrac) > 2
+                                    If CInt(Left(Right(inFrac, Len(inFrac) - 2), 1)) >= 5
+                                        inFrac = CStr(CInt(Left(inFrac, 2)) + 1)
+                                        If Len(inFrac) = 1
+                                            inFrac = "0" & inFrac
+                                        End If
+                                        If CInt(inFrac) >= 100
+                                            inInt = CStr(CInt(inInt) + 1)
+                                            inFrac = "00"
+                                        End If
+                                    Else
+                                        inFrac = Left(inFrac, 2)
+                                    End If
+                                ElseIf Len(inFrac) = 1
+                                    inFrac = inFrac & "0"
+                                End If
+                                dIn = inInt & "." & inFrac
+                            End If
+                            // 金额四舍五入到2位小数（dOut）
+                            If Regex.Test(dOut, "\\.")
+                                Dim outParts, outInt, outFrac
+                                outParts = Split(dOut, ".")
+                                outInt = outParts[0]
+                                outFrac = outParts[1]
+                                If Len(outFrac) > 2
+                                    If CInt(Left(Right(outFrac, Len(outFrac) - 2), 1)) >= 5
+                                        outFrac = CStr(CInt(Left(outFrac, 2)) + 1)
+                                        If Len(outFrac) = 1
+                                            outFrac = "0" & outFrac
+                                        End If
+                                        If CInt(outFrac) >= 100
+                                            outInt = CStr(CInt(outInt) + 1)
+                                            outFrac = "00"
+                                        End If
+                                    Else
+                                        outFrac = Left(outFrac, 2)
+                                    End If
+                                ElseIf Len(outFrac) = 1
+                                    outFrac = outFrac & "0"
+                                End If
+                                dOut = outInt & "." & outFrac
+                            End If
+                            // 金额四舍五入到2位小数（dBal）
+                            If Regex.Test(dBal, "\\.")
+                                Dim balParts, balInt, balFrac
+                                balParts = Split(dBal, ".")
+                                balInt = balParts[0]
+                                balFrac = balParts[1]
+                                If Len(balFrac) > 2
+                                    If CInt(Left(Right(balFrac, Len(balFrac) - 2), 1)) >= 5
+                                        balFrac = CStr(CInt(Left(balFrac, 2)) + 1)
+                                        If Len(balFrac) = 1
+                                            balFrac = "0" & balFrac
+                                        End If
+                                        If CInt(balFrac) >= 100
+                                            balInt = CStr(CInt(balInt) + 1)
+                                            balFrac = "00"
+                                        End If
+                                    Else
+                                        balFrac = Left(balFrac, 2)
+                                    End If
+                                ElseIf Len(balFrac) = 1
+                                    balFrac = balFrac & "0"
+                                End If
+                                dBal = balInt & "." & balFrac
+                            End If
+
+                            If dIn <> "0.00"
+                                dType = "收入"
+                            Else
+                                dType = "支出"
+                            End If
+
+                            Database.ExecuteSQL(objDatabase ,"INSERT INTO tmp_flow_staging (f_OurAccount,f_Belong,f_Currency,f_FlowDate,f_FlowTime,f_InAmount,f_OutAmount,f_Balance,f_OppAccount,f_OppName,f_Abstract,f_TransactionType) VALUES ('" & ourAccount & "','" & belong & "','" & currency & "','" & dDate & "','" & dTime & "'," & dIn & "," & dOut & "," & dBal & ",'" & dOpp & "','" & dOppNameVal & "','" & dAbs & "','" & dType & "')", {"args": []})
+                            rowProc = rowProc + 1
+                        Next
+                        TracePrint " 解析行数: " & CStr(rowProc)
+                    End If
+                End If
+
+                Try
+                    Excel.Close(objExcel, false)
+                Catch ex
+                End Try
+                fileProcessed = fileProcessed + 1
+                TracePrint " 文件处理完成"
+            End If
+        End If
+    Next
+
+    TracePrint "======= 解析完成，共处理 " & CStr(fileProcessed) & " 个文件 ======="
+
+    If allSuccess
+        Try
+            Database.ExecuteSQL(objDatabase ,"INSERT INTO t_processinfo (f_Process_ID, f_Process_Block, f_Process_Name, f_Status, f_Start_Time, f_End_Time, f_Step1, f_Finish1, f_Create_Time, f_Update_Time) VALUES ('ZJB0001-001', '流程汇总', '资金日报', 0, NOW(), NOW(), '数据获取与存储', NOW(), NOW(), NOW())", {"args": []})
+            TracePrint " 流程汇总行创建成功"
+        Catch ex
+            TracePrint " 流程汇总行创建失败: " & CStr(ex)
+        End Try
+    End If
+End If
+
+TracePrint "自适应解析完成"

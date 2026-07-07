@@ -1,0 +1,86 @@
+============================================================
+ PDF识别 - 稳定环境配置
+ 验证日期: 2026-07-04
+ Python:   3.12.10
+============================================================
+
+【一键安装命令】
+"D:\Agentic Process Automation Platform Community\1.5.1.260630\python.exe" -m pip install ^
+  pymupdf==1.26.1 ^
+  paddlepaddle==2.6.2 ^
+  paddleocr==2.9.1 ^
+  opencv-python-headless==4.10.0.84 ^
+  numpy==1.26.4 ^
+  Pillow==11.2.1
+
+（如果已安装旧版本，先加 --force-reinstall 强制覆盖）
+
+
+【完整依赖清单】（已验证兼容的版本组合）
+------------------------------------------------------------
+核心依赖:
+  pymupdf                     1.26.1      (PDF 解析)
+  paddlepaddle                 2.6.2       (深度学习框架)
+  paddleocr                    2.9.1       (OCR 引擎)
+  opencv-python-headless       4.10.0.84   (图像处理, 用 headless 避免 GUI 依赖冲突)
+  numpy                        1.26.4      (⚠ 必须 < 2.0, v2.x 移除了 np.sctypes 导致 imgaug 报错)
+  Pillow                       11.2.1      (图像读写)
+
+paddleocr 2.9.1 的依赖:
+  albucore                     0.0.13+
+  albumentations               1.4.10+
+  beautifulsoup4               4.13.4
+  Cython                       3.2.8
+  fire                         0.7.1
+  fonttools                    4.62.1
+  imgaug                       0.4.0
+  lmdb                         2.2.1
+  pyclipper                    1.4.0
+  python-docx                  1.2.0
+  PyYAML                       6.0.3
+  RapidFuzz                    3.14.5
+  requests                     2.32.4
+  scikit-image                 0.26.0
+  scipy                        1.17.1
+  shapely                      2.1.2
+  tifffile                     2026.3.3
+  tqdm                         4.67.1
+
+paddlepaddle 2.6.2 的依赖:
+  httpx                        0.28.1
+  decorator                    5.3.1
+  astor                        0.8.1
+  opt-einsum                   3.3.0
+  protobuf                     3.20.2      (⚠ 必须 <= 3.20.2)
+
+
+【已知不兼容组合】（务必避免）
+------------------------------------------------------------
+1. paddleocr 2.10.0  -- 在 UiBot 环境中存在循环导入问题
+2. numpy >= 2.0       -- 移除了 np.sctypes, imgaug 报错
+3. 同时安装 opencv-python + opencv-python-headless + opencv-contrib-python
+   -- 多个 cv2 变体会互相覆盖, 导致 cv2.__file__ = None
+4. opencv-python-headless >= 5.0 -- 与 paddleocr 2.9.1 的 imgaug 存在兼容问题
+
+
+【故障排查】
+------------------------------------------------------------
+症状: "partially initialized module 'paddleocr'"
+原因: 包版本不兼容
+解决: 执行上方的【一键安装命令】
+
+症状: "partially initialized module 'paddle.utils'"
+原因: paddle 依赖链中存在版本冲突
+解决: 同上, 确保 numpy==1.26.4
+
+症状: "No module named 'paddle.base.libpaddle.pir'"
+原因: 原生 .pyd 扩展与 Python 模块版本不匹配
+解决: 卸载重装 paddlepaddle==2.6.2
+
+症状: "module 'cv2' has no attribute 'INTER_LINEAR'"
+原因: 多个 opencv 变体冲突
+解决: 只保留 opencv-python-headless==4.10.0.84
+
+症状: "np.sctypes was removed in the NumPy 2.0 release"
+原因: numpy 版本过高
+解决: pip install numpy==1.26.4

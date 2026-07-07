@@ -1,0 +1,82 @@
+
+Dim last_dTime,iRet,objExcelWorkBook,objImg,sRet,objRect,objUiElement,bRet,iPID,objFTP,uploadStatus,year,day,month
+
+Rem "创建人：王元霖"
+Rem "创建日期：2025-12-30"
+Rem "业务描述：消息与文件分发"
+Dim now_dTime = Time.Now()
+
+Dim dTime = Time.Now()
+last_dTime=Time.DateAdd("d",-1,dTime)
+year=Time.Format(last_dTime,"yyyy")
+month = Time.Format(last_dTime,"mm")
+Dim monthday = Time.Format(last_dTime,"mmdd")
+day=Time.Day(last_dTime)
+Dim objDatabase = Database.CreateDB("MySQL",{"host": "10.44.76.35", "port": "3306", "user": "rpa","password": "Q3/L3z18Y3rj1DW0C8vuuQ==","database": "RPA","charset": "utf8"})
+Dim lastDate = Time.Format(last_dTime,"yyyy-mm-dd")
+Dim str_lastDate = Time.Format(last_dTime,"yyyymmdd")
+str_lastDate1 = Time.Format(last_dTime,"yyyy年mm月dd日")
+iRet = Database.QueryAll(objDatabase ,"select count(1) from t_processmain where f_Process_ID=%s and f_Date=%s and f_Finish5 is null" ,{"rdict": false, "args": [Process_ID,lastDate]})
+If iRet[0][0]=0 
+//Return
+End If
+Try 3
+Log.Info("===============消息与文件分发流程开始===============")
+
+objExcelWorkBook = Excel.Open(@res"\\文件\\产销存日报.xlsx",true,"Excel","","")
+Excel.ActiveSheet(objExcelWorkBook,"销售进度")
+Mouse.Action(@ui"选项卡_销售进度","left","click",10000,{"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [],"sSimulate": "simulate", "bMoveSmoothly": false})
+Excel.SelectRange(objExcelWorkBook,"销售进度","A1:O30")
+Keyboard.Press("C", "press", ["Ctrl"],{"iDelayAfter": 1000, "iDelayBefore": 1000, "sSimulate": "simulate"})
+Clipboard.SaveImage(@res"/文件/销售进度.jpg")
+App.Kill("EXCEL.exe")
+
+
+
+bRet=App.GetStatus("OUTLOOK.exe")
+If not bRet 
+
+iPID = App.Start("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Outlook 2016.lnk", 0, 1)
+End If
+File.RenameEx(@res"/文件/产销存日报.xlsx",year+"年"+month+"月产销存日报-"+monthday+"（真实版）.xlsx")
+iRet = Database.QueryAll(objDatabase ,"select f_Sender,f_Recipient,f_Subject,f_Body from t_emailinfo where f_Process_ID=%s and f_Subject=%s;" ,{"rdict": false, "args": [Process_ID,"数字员工流程执行成功"]})
+Window.SetActive(@ui"窗口_收件箱-RPA1@zznissan.com.cn-Outlook")
+Mouse.Action(@ui"按钮_新建电子邮件","left","click",10000,{"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [],"sSimulate": "simulate", "bMoveSmoothly": false})
+Window.SetActive(@ui"窗口_未命名-邮件(HTML)")
+Keyboard.InputText(@ui"可编辑文本_收件人1",iRet[0][1],true,20,10000,{"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 500, "bSetForeground": true, "sSimulate": "message", "bValidate": false, "bClickBeforeInput": false})
+Keyboard.InputText(@ui"可编辑文本_主题(U)","产销存日报-真实版-"+str_lastDate1,true,20,10000,{"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 500, "bSetForeground": true, "sSimulate": "message", "bValidate": false, "bClickBeforeInput": false})
+Keyboard.InputText(@ui"窗口2","各位",true,20,10000,{"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 500, "bSetForeground": true, "sSimulate": "message", "bValidate": false, "bClickBeforeInput": false})
+Keyboard.Press("Enter", "press", [],{"iDelayAfter": 300, "iDelayBefore": 200, "sSimulate": "simulate"})
+Keyboard.Input("请查收真实版产销存日报。",20,{"iDelayAfter": 300, "iDelayBefore": 200, "sSimulate": "message"})
+Keyboard.Press("Enter", "press", [],{"iDelayAfter": 300, "iDelayBefore": 200, "sSimulate": "simulate"})
+Mouse.Action(@ui"下拉按钮_附加文件...3","left","click",10000,{"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [],"sSimulate": "simulate", "bMoveSmoothly": false})
+Mouse.Action(@ui"菜单项目_浏览此电脑...","left","click",10000,{"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [],"sSimulate": "simulate", "bMoveSmoothly": false})
+Keyboard.InputText(@ui"窗口3",@res"文件\\"+year+"年"+month+"月产销存日报-"+monthday+"（真实版）.xlsx",true,30,10000,{"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 500, "bSetForeground": true, "sSimulate": "message", "bValidate": false, "bClickBeforeInput": false})
+Mouse.Action(@ui"窗口_打开(O)","left","click",10000,{"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [],"sSimulate": "simulate", "bMoveSmoothly": false})
+Mouse.Action(@ui"选项卡_插入","left","click",10000,{"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [],"sSimulate": "simulate", "bMoveSmoothly": false})
+Mouse.Action(@ui"按钮_图片...","left","click",10000,{"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [],"sSimulate": "simulate", "bMoveSmoothly": false})
+Keyboard.InputText(@ui"窗口1",@res"文件\\销售进度.jpg",true,30,10000,{"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 500, "bSetForeground": true, "sSimulate": "message", "bValidate": false, "bClickBeforeInput": false})
+Mouse.Action(@ui"窗口_插入(S)","left","click",10000,{"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [],"sSimulate": "simulate", "bMoveSmoothly": false})
+Mouse.Action(@ui"窗口_发送(S)","left","click",10000,{"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [],"sSimulate": "simulate", "bMoveSmoothly": false})
+
+
+Dim nowDatetime = Time.Format(now_dTime,"yyyy-mm-dd hh:mm:ss")
+
+
+objFTP = FTP.Connect(ftpServerAddr,ftpUserName,ftpPassword,false,21,false,1,{"sftp":false,"private_key":'''C:\Users''',"transport_mode":"pasv","encoding":""})
+File.RenameEx(@res"/文件/"+lastDate+".xlsx","日报数据.xlsx")
+File.RenameEx(@res"/文件/"+year+"年"+month+"月产销存日报-"+monthday+"（真实版）.xlsx",lastDate+".xlsx")
+uploadStatus = FTP.UploadFile(objFTP,"/经管部/输出文件/"+year+"/"+month,@res"/文件/"+lastDate+".xlsx")
+FTP.Disconnect(objFTP)
+Rem "更新消息与文件分发状态"
+Dim update_count = Database.ExecuteSQL(objDatabase ,"update t_processmain set f_Finish5=%s  where f_Process_ID=%s and f_Date=%s", {"args":  [nowDatetime,Process_ID,lastDate]})
+Database.CloseDB(objDatabase)
+Log.Info("===============消息与文件分发流程结束===============")
+Catch ex
+Log.Error(ex)
+Dim ip_server = Sys.Command("ipconfig")
+Dim ipv4 = Regex.FindStr(ip_server,"(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})",0)
+Dim Gdtime = Time.Format(now_dTime,"yyyy-mm-dd hh:mm:ss")
+Dim count = Database.ExecuteSQL(objDatabase ,"INSERT INTO t_rpa_exception_log(f_DepName,f_Server,f_Process_ID,f_Task,f_Line,f_Msg,f_Time) VALUES(%s,%s,%s,%s,%s,%s,%s)", {"args":  [DepName,ipv4,Process_ID,ex["File"],ex["Line"],ex["Message"],Gdtime]})
+Database.CloseDB(objDatabase)
+End Try

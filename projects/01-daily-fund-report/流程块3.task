@@ -1,0 +1,195 @@
+// =====================================================================
+// 流程块3：校验与序号编排
+// 核心操作：
+//   1. 前置依赖检查（流程块2 f_Status=1 才能开始）
+//   2. 序号编排（按流水时间升序编号，余额/收入/支出照搬不运算）
+//   3. 三项最终校验（序号连续、日期非空、金额汇总）
+// =====================================================================
+
+// —— DB连接 ——
+Dim i, t_processinfo, iRet, objDatabase, dbConnected
+i = 0
+t_processinfo = 0
+dbConnected = false
+
+Try
+    objDatabase = Database.CreateDB("MySQL",{"host": "127.0.0.1", "port": "3306", "user": "root","password": "root","database": "rpa_bank_flow","charset": "utf8"})
+    dbConnected = true
+    TracePrint " 数据库连接成功"
+Catch ex
+    Log.Error " 数据库连接失败: " & CStr(ex)
+End Try
+
+// —— 主循环：3次重试，成功后Break ——
+Do While i < 3 And dbConnected
+    i = i + 1
+    TracePrint "======= 第 " & CStr(i) & " 次执行 校验与序号编排 ======="
+
+    // —— 查自己状态，已完成则跳过 ——
+    Try
+        iRet = Database.QueryOne(objDatabase ,"SELECT COUNT(*) FROM t_processinfo WHERE f_Process_ID='ZJB0001-001' AND f_Process_Block='流程汇总' AND f_Finish3 IS NOT NULL", {"rdict": false, "args": []})
+        t_processinfo = CInt(iRet[0])
+        TracePrint " 查询状态 f_Status = " & CStr(t_processinfo)
+    Catch ex
+        TracePrint " 第" & CStr(i) & "次状态查询异常: " & CStr(ex)
+        Delay 1000
+        t_processinfo = 0
+    End Try
+
+    If t_processinfo = 1
+        TracePrint " 流程状态为【已完成】，直接结束"
+        Break
+    End If
+
+    If t_processinfo <> 1
+        Dim allSuccess
+        allSuccess = true
+
+        // ============================================================
+        // 前置依赖：流程块2（数据校验与入库）必须 f_Status=1
+        // 流程块2没跑完 → Break等重试，防止数据没入库完就编号
+        // ============================================================
+        Dim preStatus
+        preStatus = 0
+        Try
+            iRet = Database.QueryOne(objDatabase ,"SELECT COUNT(*) FROM t_processinfo WHERE f_Process_ID='ZJB0001-001' AND f_Process_Block='流程汇总' AND f_Finish2 IS NOT NULL", {"rdict": false, "args": []})
+            preStatus = CInt(iRet[0])
+        Catch ex
+            TracePrint " 查询前置节点状态异常: " & CStr(ex)
+            preStatus = 0
+        End Try
+        If preStatus <> 1
+            TracePrint " 前置节点(流程块2)未完成，等待下次重试"
+            Log.Error " 前置节点(流程块2)f_Status=" & CStr(preStatus) & " 非1，无法继续"
+            Delay 1000
+            Break
+        End If
+
+    If preStatus = 1
+        TracePrint " 前置节点已确认完成，开始序号编排"
+
+    // —— 创建本节点状态记录 ——
+    Try
+        Database.ExecuteSQL(objDatabase ,"UPDATE t_processinfo SET f_Step3='校验与序号编排', f_End_Time=NOW(), f_Update_Time=NOW() WHERE f_Process_ID='ZJB0001-001' AND f_Process_Block='流程汇总'", {"args": []})
+    Catch ex
+        TracePrint " 插入流程记录异常: " & CStr(ex)
+    End Try
+
+
+    allSuccess = true
+    Try
+        Database.ExecuteSQL(objDatabase ,"UPDATE t_flowFund_zj t1 SET business_no = (SELECT COUNT(*) FROM (SELECT * FROM t_flowFund_zj) t2 WHERE t2.f_Process_ID = 'ZJB0001-001' AND (t2.f_Flowtime < t1.f_Flowtime OR (t2.f_Flowtime = t1.f_Flowtime AND t2.id <= t1.id))), flow_date = DATE(f_Flowtime) WHERE t1.f_Process_ID = 'ZJB0001-001'", {"args": []})
+        TracePrint " 序号编排完成"
+    Catch ex
+        TracePrint " 序号编排失败: " & CStr(ex)
+        allSuccess = false
+        Try
+            Database.ExecuteSQL(objDatabase ,"INSERT INTO t_rpa_exception_log (f_DeptName, f_Server, f_Process_ID, f_Task, f_Line, f_Msg, f_Time, f_CreateTime) VALUES ('资金日报','','ZJB0001-001','校验与序号编排',0,'序号编排失败:" & CStr(ex) & "',NOW(),NOW())", {"args": []})
+        Catch ex2
+        End Try
+    End Try
+
+    // —— 三项数据校验 ——
+    If allSuccess
+        TracePrint "======= 开始校验 ======="
+        Dim valErrors
+        valErrors = 0
+        Dim chkRet, vCount, errMsg
+        errMsg = ""
+
+        // 校验1：序号连续性（MIN=1, MAX-MIN+1=COUNT 则连续无跳号）
+        Try
+            chkRet = Database.QueryOne(objDatabase ,"SELECT COUNT(*), MIN(business_no), MAX(business_no) FROM t_flowFund_zj WHERE f_Process_ID='ZJB0001-001'", {"rdict": false, "args": []})
+            vCount = CInt(chkRet[0])
+            Dim minNo, maxNo
+            minNo = CInt(chkRet[1])
+            maxNo = CInt(chkRet[2])
+            If minNo <> 1
+                errMsg = errMsg & "序号未从1开始(最小=" & CStr(minNo) & "); "
+                valErrors = valErrors + 1
+            End If
+            If maxNo - minNo + 1 <> vCount
+                errMsg = errMsg & "序号不连续(总数=" & CStr(vCount) & ",最小=" & CStr(minNo) & ",最大=" & CStr(maxNo) & "); "
+                valErrors = valErrors + 1
+            End If
+        Catch ex
+            errMsg = errMsg & "序号校验异常:" & CStr(ex) & "; "
+            valErrors = valErrors + 1
+        End Try
+        TracePrint " 序号校验: 总数=" & CStr(vCount) & " 最小=" & CStr(minNo) & " 最大=" & CStr(maxNo)
+
+        // 校验2：纯日期flow_date全部非空
+        Try
+            chkRet = Database.QueryOne(objDatabase ,"SELECT COUNT(*) FROM t_flowFund_zj WHERE f_Process_ID='ZJB0001-001' AND flow_date IS NULL", {"rdict": false, "args": []})
+            vCount = CInt(chkRet[0])
+            If vCount > 0
+                errMsg = errMsg & "纯日期为空:" & CStr(vCount) & "行; "
+                valErrors = valErrors + 1
+            End If
+        Catch ex
+            errMsg = errMsg & "日期校验异常:" & CStr(ex) & "; "
+            valErrors = valErrors + 1
+        End Try
+
+        // 校验3：金额汇总（输出收入/支出/净利润三个数字）
+        Try
+            Dim sumRet, sumIn, sumOut, sumNet
+            sumRet = Database.QueryOne(objDatabase ,"SELECT SUM(f_InAmount), SUM(f_OutAmount), SUM(f_InAmount)-SUM(f_OutAmount) FROM t_flowFund_zj WHERE f_Process_ID='ZJB0001-001'", {"rdict": false, "args": []})
+            sumIn = CStr(sumRet[0])
+            sumOut = CStr(sumRet[1])
+            sumNet = CStr(sumRet[2])
+            TracePrint " 金额合计: 收入=" & sumIn & " 支出=" & sumOut & " 净利润=" & sumNet
+        Catch ex
+            errMsg = errMsg & "金额合计异常:" & CStr(ex) & "; "
+            valErrors = valErrors + 1
+        End Try
+
+        // —— 汇总校验结果 ——
+        If valErrors > 0
+            TracePrint " 校验发现问题: " & errMsg
+            Try
+                Database.ExecuteSQL(objDatabase ,"INSERT INTO t_rpa_exception_log (f_DeptName, f_Server, f_Process_ID, f_Task, f_Line, f_Msg, f_Time, f_CreateTime) VALUES ('资金日报','','ZJB0001-001','校验与序号编排',0,'校验异常:" & errMsg & "',NOW(),NOW())", {"args": []})
+            Catch ex
+            End Try
+            allSuccess = false
+        Else
+            TracePrint " 校验全部通过"
+        End If
+    End If
+
+    // —— 全部通过 → 标记完成 ——
+    If allSuccess
+        Try
+            Database.ExecuteSQL(objDatabase ,"UPDATE t_processinfo SET f_Finish3=NOW(), f_End_Time=NOW(), f_Update_Time=NOW() WHERE f_Process_ID='ZJB0001-001' AND f_Process_Block='流程汇总'", {"args": []})
+            t_processinfo = 1
+            TracePrint " 流程状态更新为【已完成】"
+        Catch ex
+            TracePrint " 更新状态异常: " & CStr(ex)
+            t_processinfo = 0
+            allSuccess = false
+        End Try
+    End If
+
+    // —— 本轮失败 → 记录日志等重试 ——
+    If allSuccess = false
+        Log.Error " 第" & CStr(i) & "次执行失败"
+        Delay 1000
+    End If
+    End If
+    End If
+Loop
+
+// —— 最终结果判断 ——
+If dbConnected = false
+    Log.Error " 数据库连接失败，无法执行校验与序号编排"
+ElseIf i >= 3 And t_processinfo <> 1
+    Log.Error " 3次重试均失败，流程执行异常终止"
+    Try
+        Database.ExecuteSQL(objDatabase ,"INSERT INTO t_rpa_exception_log (f_DeptName, f_Server, f_Process_ID, f_Task, f_Line, f_Msg, f_Time, f_CreateTime) VALUES ('资金日报','','ZJB0001-001','校验与序号编排',0,'3次重试均失败',NOW(),NOW())", {"args": []})
+    Catch ex
+    End Try
+Else
+    TracePrint " 校验与序号编排 流程执行成功"
+End If
+
+TracePrint "校验与序号编排流程执行完毕"

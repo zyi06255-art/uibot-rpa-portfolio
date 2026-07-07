@@ -1,0 +1,96 @@
+/*
+
+1.消息与文件分发-查询系统操作的状态
+2.消息与文件分发-发送流程运行情况
+3.消息与文件分发-反写状态
+*/
+
+Dim arr_info, arrayRet, cellName, dTime, f_Date, objExcelWorkBook, sName
+Dim objDatabase, dTimeLast, iData, iData_sjkh, iData_sjsk, iData_ydkh, iData_ydsk, lastMonth, num_db, num_excel, num_sjkh, num_sjsk, num_ydkh, num_ydsk, status, MsgType, msg, iDatatemp, sRet
+PROCESS_ID = "ZJB0002"
+hostMsg = "127.0.0.1"
+userMsg = "root"
+passwordMsg = "root"
+databaseMsg = "rpa"
+dTime = Time.Date()
+dTime = Time.DateAdd("d", -1, dTime)
+Dim year = Time.Format(dTime, "yyyy")
+Dim month = Time.Format(dTime, "mm")
+f_Date = Time.Format(dTime, "yyyy-mm-dd")
+dTimeLast = Time.DateAdd("m", -1, dTime)
+lastMonth = Time.Format(dTimeLast, "yyyy-mm")
+objDatabase = Database.CreateDB("MySQL", {"host": hostMsg, "port": "3306", "user": userMsg, "password": passwordMsg, "database": databaseMsg, "charset": "utf8"})
+
+Dim iRet = Database.QueryOne(objDatabase, "select 1 from t_processmain where f_Process_ID='" & PROCESS_ID & "' and f_Step5='消息与文件分发' and IFNULL(f_Finish5,'')<>'' and f_Date='" & f_Date & "'", {"rdict": true, "args": []})
+If UBound(iRet) >= 0
+    Log.Info("消息与文件分发已完成，退出当前流程")
+    Database.CloseDB(objDatabase)
+    Return "已完成"
+End If
+
+Try 3
+    Log.Info("===============消息与文件分发开始===============")
+    Log.Info("1.消息与文件分发-查询系统操作的状态")
+    iData = Database.QueryOne(objDatabase, "select f_finish5 from t_processmain where f_Process_ID='" & PROCESS_ID & "' and f_Date='" & f_Date & "' ", {"rdict": false, "args": []})
+    TracePrint "select f_finish5 from t_processmain where f_Process_ID='" & PROCESS_ID & "' and f_Date='" & f_Date & "' "
+    If Set.Count(iData) > 0
+        status = iData[0]
+    End If
+    MsgType = ""
+    If CStr(status) <> ""
+        // 消息与文件分发-设置初始值为0
+        num_ydkh = 0
+        num_sjkh = 0
+        num_ydsk = 0
+        num_sjsk = 0
+        iData_ydkh = Database.QueryOne(objDatabase, "select count(1) from t_baseinfo where f_DataType='客户' and f_Date='" & f_Date & "' ", {"rdict": false, "args": []})
+        If Set.Count(iData_ydkh) > 0
+            num_ydkh = iData_ydkh[0]
+        End If
+        iData_sjkh = Database.QueryOne(objDatabase, "select count(1) from t_baseinfo where f_DataType='客户' and f_Date='" & f_Date & "' and f_Remark='已导入' ", {"rdict": false, "args": []})
+        If Set.Count(iData_sjkh) > 0
+            num_sjkh = iData_sjkh[0]
+        End If
+        iData_ydsk = Database.QueryOne(objDatabase, "select count(1) from t_flowfund_zj  where left(f_Flowtime,7)='" & lastMonth & "' and f_IsReceipt='Y' ", {"rdict": false, "args": []})
+        If Set.Count(iData_ydsk) > 0
+            num_ydsk = iData_ydsk[0]
+        End If
+        iData_sjsk = Database.QueryOne(objDatabase, "select count(1) from t_flowfund_zj  where left(f_Flowtime,7)='" & lastMonth & "' and f_IsReceipt='Y' and ifnull(f_Received,'')='Y' ", {"rdict": false, "args": []})
+        If Set.Count(iData_sjsk) > 0
+            num_sjsk = iData_sjsk[0]
+        End If
+
+        Log.Info("2.消息与文件分发-发送流程运行情况")
+        If (num_ydkh = num_sjkh) and (num_ydsk = num_sjsk)
+            iDatatemp = Database.QueryAll(objDatabase, "select f_MsgType, f_MsgTemplate from t_msg_template where f_Process_ID='" & PROCESS_ID & "' and f_MsgType='流程消息 - 成功' ", {"rdict": true, "args": []})
+            MsgType = iDatatemp[0]["f_MsgType"]
+            msg = iDatatemp[0]["f_MsgTemplate"]
+            msg = Replace(msg, "【部门名称】", "【" & depName & "】")
+            msg = Replace(msg, "【流程名称】", "【自动导入收款单】")
+            msg = Replace(msg, "{YYYY-MM-DD}", f_Date)
+            msg = Replace(msg, "{******}", "昨日客户已导入，应导入" & CStr(num_ydkh) & "条，实际导入" & CStr(num_sjkh) & "条。昨日收款已导入,应导入" & CStr(num_ydsk) & "条，实际导入" & CStr(num_sjsk) & "条。数据无偏差】")
+        Else
+            iDatatemp = Database.QueryAll(objDatabase, "select f_MsgType, f_MsgTemplate from t_msg_template where f_Process_ID='" & PROCESS_ID & "' and f_MsgType='流程消息 - 失败' ", {"rdict": true, "args": []})
+            MsgType = iDatatemp[0]["f_MsgType"]
+            msg = iDatatemp[0]["f_MsgTemplate"]
+            msg = Replace(msg, "【部门名称】", "【" & depName & "】")
+            msg = Replace(msg, "【流程名称】", "【自动导入收款单】")
+            msg = Replace(msg, "{YYYY-MM-DD}", f_Date)
+            msg = Replace(msg, "{******}", "昨日客户已导入，应导入" & CStr(num_ydkh) & "条，实际导入" & CStr(num_sjkh) & "条。昨日收款已导入,应导入" & CStr(num_ydsk) & "条，实际导入" & CStr(num_sjsk) & "条。<font color=\"red\">数据有偏差</font>】")
+        End If
+        TracePrint msg
+        sRet = HTTP.PostJson("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=31bf65c4-1c54-417e-a289-d015d77ed490", {"msgtype": "markdown", "markdown": {"content": msg}}, 60000)
+        iRet = Database.ExecuteSQL(objDatabase, "insert into t_msg_log(f_Process_ID,f_MsgType,f_Msg,f_Status) values('" & PROCESS_ID & "','" & MsgType & "','" & msg & "','成功') ", {"args": []})
+
+        Log.Info("3.消息与文件分发-反写状态")
+        dTime = Time.Now()
+        dTime = Time.Format(dTime, "yyyy-mm-dd hh:mm:ss")
+        iRet = Database.ExecuteSQL(objDatabase, "update t_processmain set f_Finish5='" & dTime & "' where f_Process_ID='" & PROCESS_ID & "' and f_date='" & f_Date & "' ", {"args": []})
+    End If
+    Database.CloseDB(objDatabase)
+    Log.Info("===============消息与文件分发结束===============")
+    Return ""
+Catch ex
+    TracePrint ex
+    lib_bak.组件_MySql错误日志记录(ex, PROCESS_ID, hostMsg, userMsg, passwordMsg, databaseMsg)
+End Try

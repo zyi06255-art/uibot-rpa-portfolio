@@ -1,0 +1,81 @@
+// ===== 异常处理与全局监听（ZJB0001-001）=====
+
+Dim processId
+processId = "ZJB0001-001"
+
+Dim i, objDatabase, dbConnected
+i = 0
+dbConnected = false
+
+// 业务节点与对应 f_Finish 列
+Dim nodes
+nodes = ["数据获取与存储", "数据校验与入库", "校验与序号编排", "Excel日报生成", "数据比对与消息推送"]
+
+Do While i < 3 And dbConnected = false
+    i = i + 1
+    TracePrint "======= 第 " & CStr(i) & " 次执行异常监听 ======="
+    Try
+        objDatabase = Database.CreateDB("MySQL",{"host": "127.0.0.1", "port": "3306", "user": "root","password": "root","database": "rpa_bank_flow","charset": "utf8"})
+        dbConnected = true
+        TracePrint " MySQL连接成功"
+    Catch ex
+        Log.Error " MySQL连接失败: " & CStr(ex)
+        Delay 1000
+    End Try
+Loop
+
+If dbConnected = false
+    Log.Error " 数据库连接失败，3次重试均失败"
+Else
+    Dim allPassed, errorNodes, errorCount
+    allPassed = true
+    errorNodes = ""
+    errorCount = 0
+
+    // 查汇总行
+    Dim sumRow, sumStatus, iRet
+    sumRow = {}
+    sumStatus = 0
+    Try
+        iRet = Database.QueryOne(objDatabase ,"SELECT f_Status, f_Finish1, f_Finish2, f_Finish3, f_Finish4, f_Finish5 FROM t_processinfo WHERE f_Process_ID='" & processId & "' AND f_Process_Block='流程汇总'", {"rdict": false, "args": []})
+        sumRow = iRet
+        sumStatus = CInt(iRet[0])
+    Catch ex
+    End Try
+
+    // 遍历检查每个节点
+    Dim nodeIdx, nodeName, finishVal
+    For nodeIdx = 0 To UBound(nodes)
+        nodeName = nodes[nodeIdx]
+        finishVal = ""
+        Try
+            finishVal = CStr(sumRow[nodeIdx + 1])
+        Catch ex
+        End Try
+
+        If finishVal <> "" And finishVal <> "None"
+            TracePrint " [OK] " & nodeName & " - 已完成"
+        Else
+            TracePrint " [WARN] " & nodeName & " - 未完成"
+            errorNodes = errorNodes & nodeName & "(未完成); "
+            errorCount = errorCount + 1
+            allPassed = false
+        End If
+    Next
+
+    // 汇总结果
+    If allPassed And sumStatus = 1
+        TracePrint "======= 全局监听：所有节点正常，流程已完成 ======="
+    ElseIf allPassed
+        TracePrint "======= 全局监听：所有节点正常，总状态未完成 ======="
+    Else
+        TracePrint "======= 全局监听：发现 " & CStr(errorCount) & " 个节点异常 ======="
+        Log.Error " 节点异常明细: " & errorNodes
+        Try
+            Database.ExecuteSQL(objDatabase ,"INSERT INTO t_rpa_exception_log (f_DeptName, f_Server, f_Process_ID, f_Task, f_Line, f_Msg, f_Time, f_CreateTime) VALUES ('资金日报', '', '" & processId & "', '异常处理', 0, '" & Replace(errorNodes, "'", "") & "', NOW(), NOW())", {"args": []})
+        Catch ex
+        End Try
+    End If
+End If
+
+TracePrint "异常处理与全局监听流程执行完毕"

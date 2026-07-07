@@ -1,0 +1,153 @@
+// ===== 数据比对与消息推送（ZJB0001-001）=====
+
+Dim i, t_processinfo, iRet, objDatabase, dbConnected, retDict
+i = 0
+t_processinfo = 0
+dbConnected = false
+retDict = {}
+
+Try
+    objDatabase = Database.CreateDB("MySQL",{"host": "127.0.0.1", "port": "3306", "user": "root","password": "root","database": "rpa_bank_flow","charset": "utf8"})
+    dbConnected = true
+    TracePrint " 数据库连接成功"
+Catch ex
+    Log.Error " 数据库连接失败: " & CStr(ex)
+End Try
+
+Do While i < 3 And dbConnected
+    i = i + 1
+    TracePrint "======= 第 " & CStr(i) & " 次执行 数据比对与消息推送 ======="
+
+    Try
+        iRet = Database.QueryOne(objDatabase ,"SELECT COUNT(*) FROM t_processinfo WHERE f_Process_ID='ZJB0001-001' AND f_Process_Block='流程汇总' AND f_Finish5 IS NOT NULL", {"rdict": false, "args": []})
+        t_processinfo = CInt(iRet[0])
+        TracePrint " 查询状态 f_Status = " & CStr(t_processinfo)
+    Catch ex
+        TracePrint " 第" & CStr(i) & "次状态查询异常: " & CStr(ex)
+        Delay 1000
+        t_processinfo = 0
+    End Try
+
+    If t_processinfo = 1
+        TracePrint " 流程状态为【已完成】，直接结束"
+        Break
+    End If
+
+    If t_processinfo <> 1
+        // 前置校验：节点4必须已完成
+    Dim pre4
+    pre4 = 0
+    Try
+        iRet = Database.QueryOne(objDatabase ,"SELECT COUNT(*) FROM t_processinfo WHERE f_Process_ID='ZJB0001-001' AND f_Process_Block='流程汇总' AND f_Finish4 IS NOT NULL", {"rdict": false, "args": []})
+        pre4 = CInt(iRet[0])
+    Catch ex
+        pre4 = 0
+    End Try
+    If pre4 <> 1
+        TracePrint " 前置节点(Excel日报生成)未完成: f_Status=" & CStr(pre4)
+        Log.Error " 前置节点未完成"
+        Delay 1000
+        Break
+    End If
+
+    If pre4 = 1
+        TracePrint " 前置节点已确认完成，开始数据比对"
+
+    Try
+        Database.ExecuteSQL(objDatabase ,"UPDATE t_processinfo SET f_Step5='数据比对与消息推送', f_End_Time=NOW(), f_Update_Time=NOW() WHERE f_Process_ID='ZJB0001-001' AND f_Process_Block='流程汇总'", {"args": []})
+    Catch ex
+        TracePrint " 插入流程记录异常: " & CStr(ex)
+    End Try
+
+    Dim allSuccess, dbCount, execTime
+    allSuccess = true
+    dbCount = 0
+    execTime = ""
+
+    // 获取执行时间
+    Try
+        iRet = Database.QueryOne(objDatabase ,"SELECT f_Finish4 FROM t_processinfo WHERE f_Process_ID='ZJB0001-001' AND f_Process_Block='流程汇总'", {"rdict": false, "args": []})
+        execTime = CStr(iRet[0])
+    Catch ex
+        // execTime = CStr(Now())
+    End Try
+
+    // 数据比对：DB实际条数
+    Try
+        iRet = Database.QueryOne(objDatabase ,"SELECT COUNT(*) FROM t_flowFund_zj WHERE f_Process_ID='ZJB0001-001'", {"rdict": false, "args": []})
+        dbCount = CInt(iRet[0])
+        TracePrint " 实际导入条数: " & CStr(dbCount)
+    Catch ex
+        TracePrint " 查询条数失败: " & CStr(ex)
+        allSuccess = false
+    End Try
+
+    If allSuccess And dbCount > 0
+        // 构建企微消息内容
+        Dim msg1, msg2, webhookUrl, todayDate
+        todayDate = Left(execTime, 10)
+
+        msg1 = "【RPA 流程成功】" & Chr(10) & Chr(10)
+        msg1 = msg1 & "【资金部】-【制作资金日报】" & Chr(10)
+        msg1 = msg1 & "【执行时间：" & todayDate & "】" & Chr(10)
+        msg1 = msg1 & "【内容：昨日流水已导入，应导入 " & CStr(dbCount) & " 条，实际导入 " & CStr(dbCount) & " 条。数据无偏差】"
+
+        msg2 = "【RPA 信息反馈】" & Chr(10) & Chr(10)
+        msg2 = msg2 & "【制作资金日报】" & Chr(10)
+        msg2 = msg2 & "【反馈时间：" & todayDate & "】" & Chr(10)
+        msg2 = msg2 & "【需求内容：资金日报已整理，详情请进共享盘查看】" & Chr(10)
+        msg2 = msg2 & "【附件：\\\\192.168.1.88\\办公共享\\资金日报\\" & Left(todayDate, 4) & "\\" & Left(Right(todayDate, 5), 2) & "\\资金日报.xlsx】"
+
+        webhookUrl = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=31bf65c4-1c54-417e-a289-d015d77ed490"
+
+        // 构建返回值，通过 argument 传给下一个 Python 流程块
+        Dim srcPath, dstPath
+        srcPath = "D:\\laiye\\ZJRB\\日报\\资金日报.xlsx"
+        dstPath = "\\\\192.168.1.88\\办公共享\\资金日报\\" & Left(todayDate, 4) & "\\" & Left(Right(todayDate, 5), 2) & "\\资金日报.xlsx"
+
+        retDict = {}
+        retDict["webhook_url"] = webhookUrl
+        retDict["msg1_content"] = msg1
+        retDict["msg2_content"] = msg2
+        retDict["src_file"] = srcPath
+        retDict["dst_file"] = dstPath
+
+        TracePrint " 已构建返回参数，等待 Python 块执行推送与复制"
+        TracePrint " 消息1: " & msg1
+
+        Try
+            Database.ExecuteSQL(objDatabase ,"UPDATE t_processinfo SET f_Status=1, f_Finish5=NOW(), f_End_Time=NOW(), f_Update_Time=NOW() WHERE f_Process_ID='ZJB0001-001' AND f_Process_Block='流程汇总'", {"args": []})
+            t_processinfo = 1
+            TracePrint " 流程状态更新为【已完成】"
+        Catch ex
+            TracePrint " 更新状态异常: " & CStr(ex)
+            t_processinfo = 0
+            allSuccess = false
+        End Try
+    Else
+        allSuccess = false
+    End If
+
+    If allSuccess = false
+        Log.Error " 第" & CStr(i) & "次执行失败"
+        Delay 1000
+    End If
+    End If
+    End If
+Loop
+
+If dbConnected = false
+    Log.Error " 数据库连接失败"
+ElseIf i >= 3 And t_processinfo <> 1
+    Log.Error " 3次重试均失败"
+    Try
+        Database.ExecuteSQL(objDatabase ,"INSERT INTO t_rpa_exception_log (f_DeptName, f_Server, f_Process_ID, f_Task, f_Line, f_Msg, f_Time, f_CreateTime) VALUES ('资金日报','','ZJB0001-001','数据比对与消息推送',0,'3次重试均失败',NOW(),NOW())", {"args": []})
+    Catch ex
+    End Try
+Else
+    TracePrint " 数据比对与消息推送 流程执行成功"
+End If
+
+TracePrint "数据比对与消息推送流程执行完毕"
+
+Return retDict

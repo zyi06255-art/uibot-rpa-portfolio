@@ -1,0 +1,204 @@
+dim arr_info, arrayRet, arrayRet_dwbzjg, arrayRet_gc, arrayRet_gjl, arrayRet_hh, arrayRet_jj01, arrayRet_jj02, arrayRet_jj03, arrayRet_jj04, arrayRet_lwlh, arrayRet_pe01, arrayRet_pe02, arrayRet_pe03, arrayRet_pe04, arrayRet_wlh, arrayRet_wllx, arrayRet_wlms, cellName, dTime, f_Date, FileType, objExcelWorkBook, sName
+Dim objDatabase, arrayRetNew, arrSheetName, dbNum, dbNum1, GS, iRow, isSheet, objRet, bRet, bRetpl, extract_result, iData1, iData2, InputFolder1, InputFolder2, lastMonth, OutputFolder3, sContent
+dTime = Time.Date()
+PROCESS_ID = "ZJB0002"
+hostMsg = "127.0.0.1"
+userMsg = "root"
+passwordMsg = "root"
+databaseMsg = "rpa"
+dTime = Time.DateAdd("d", -1, dTime)
+Dim year = Time.Format(dTime, "yyyy")
+Dim month = Time.Format(dTime, "mm")
+Dim day = Time.Format(dTime, "yyyy-mm-dd")
+f_Date = Time.Format(dTime, "yyyy-mm-dd")
+lastMonth = Time.Format(dTime, "yyyy-mm")
+objDatabase = Database.CreateDB("MySQL", {"host": hostMsg, "port": "3306", "user": userMsg, "password": passwordMsg, "database": databaseMsg, "charset": "utf8"})
+Dim iRet = Database.QueryOne(objDatabase, "select 1 from t_processmain where f_Process_ID='" & PROCESS_ID & "' and f_Step4='系统操作' and IFNULL(f_Finish4,'')<>'' and f_Date='" & f_Date & "'", {"rdict": true, "args": []})
+if UBound(iRet) >= 0
+	Log.Info("系统操作已完成，退出当前流程")
+	Return 
+end if
+Try 1
+	Log.Info("===============系统操作开始===============")
+	Log.Info("1.系统操作-设置生成文件路径")
+	InputFolder1 = @res"\\资金部\\生成文件\\" & year & "\\" & month & "\\" & day & "\\客户" & day & ".xlsx"
+	InputFolder2 = @res"\\资金部\\生成文件\\" & year & "\\" & month & "\\" & day & "\\收款单" & day & ".xlsx"
+	OutputFolder3 = @res"\\资金部\\生成文件\\" & year & "\\" & month & "\\" & day & "\\客户引入错误信息" & day & ".xlsx"
+	OutputFolder4 = @res"\\资金部\\生成文件\\" & year & "\\" & month & "\\" & day & "\\收款单引入错误信息" & day & ".xlsx"
+	InputFolder1 = Replace(InputFolder1, "\\\\", "\\")
+	InputFolder2 = Replace(InputFolder2, "\\\\", "\\")
+	OutputFolder3 = Replace(OutputFolder3, "\\\\", "\\")
+	OutputFolder4 = Replace(OutputFolder4, "\\\\", "\\")
+	bRet = File.FileExists(InputFolder1)
+	if bRet = True
+		Log.Info("2.系统操作-调用命令库导入客户")
+		iData1 = Database.QueryAll(objDatabase, "select b.f_ID,a.f_StandardCode,a.f_StandardName,b.f_StandardCode,a.f_StandardCode,a.f_StandardName,'',b.f_StandardName,'PRE001','人民币',1 from t_baseinfo a,t_baseinfo b where a.f_SystemType=b.f_SystemType and a.f_DataType='组织' and b.f_DataType='客户' and IFNULL(b.f_Remark,'')<>'已导入' ", {"rdict": false, "args": []})
+		TracePrint Set.Count(iData1)
+		if Set.Count(iData1) > 0
+			dim result = lib_bak.导入金蝶云星空客户信息(InputFolder1, OutputFolder3)
+			TracePrint result
+			if InStr(result, "成功", 1, false) >= 1
+				extract_result = CInt(DigitFromStr(result))
+				TracePrint extract_result
+				if Set.Count(iData1) = extract_result
+					iRet = Database.ExecuteSQL(objDatabase, "update t_baseinfo set f_Remark='已导入' where f_DataType='客户' and IFNULL(f_Remark,'')<>'已导入'  ", {"args": []})
+				end if
+			Else
+				iDatatemp = Database.QueryAll(objDatabase, "select f_MsgType, f_MsgTemplate,f_StartUser from t_msg_template a,t_processinfo b where a.f_Process_ID=b.f_Process_ID and  a.f_Process_ID='" & PROCESS_ID & "' and a.f_MsgType='其他消息 - 提醒消息'  ", {"rdict": true, "args": []})
+				MsgType = iDatatemp[0]["f_MsgType"]
+				msg = iDatatemp[0]["f_MsgTemplate"]
+				StartUser = iDatatemp[0]["f_StartUser"]
+				msg = Replace(msg, "【 提醒部门/人员】", "【" & depName & "/" & StartUser & "】")
+				msg = Replace(msg, "{YYYY-MM-DD}", f_Date)
+				msg = Replace(msg, "{******}", "有客户未导入成功，请检查原因。")
+				// sRet = HTTP.PostJson("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=31bf65c4-1c54-417e-a289-d015d77ed490", {"msgtype": "markdown", "markdown": {"content": msg}}, 60000)
+				iRet = Database.ExecuteSQL(objDatabase, "insert into t_msg_log(f_Process_ID,f_MsgType,f_Msg,f_Status) values('" & PROCESS_ID & "','" & MsgType & "','" & msg & "','成功') ", {"args": []})
+			end if
+		end if
+	end if
+	//============================================================================
+	iData1 = Database.QueryAll(objDatabase, "select b.f_ID,a.f_StandardCode,a.f_StandardName,b.f_StandardCode,a.f_StandardCode,a.f_StandardName,'',b.f_StandardName,'PRE001','人民币',1 from t_baseinfo a,t_baseinfo b where a.f_SystemType=b.f_SystemType and a.f_DataType='组织' and b.f_DataType='客户' and IFNULL(b.f_Remark,'')<>'已导入' ", {"rdict": false, "args": []})
+	if Set.Count(iData1) <> 0
+		Log.Info("客户信息未完全导入，终止流程")
+		// sRet = HTTP.PostJson("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=31bf65c4-1c54-417e-a289-d015d77ed490", {"msgtype": "markdown", "markdown": {"content": msg}}, 60000)
+		 Exit()
+	end if
+	Log.Info("3.系统操作-导入收款单")
+	iData2 = Database.QueryAll(objDatabase, "select CONCAT(t1.f_Flowtime,t1.f_OppAccount) FBillHead, 'SKDLX01_SYS' FBillTypeID,'销售收款单' FBillTypeName,t4.f_StandardCode FPAYORGID,t4.f_StandardName FPAYORGName,t1.f_Flowtime FDATE,'客户' FCONTACTUNITTYPE, t2.f_StandardCode FCONTACTUNIT, t1.f_OppAccountName FCONTACTUNITName,'PRE001' FCURRENCYID,'人民币' FCURRENCYName,'1' FEXCHANGERATE,CONCAT(t1.f_Flowtime,t1.f_OppAccount) FRECEIVEBILLENTRY,t3.f_StandardCode FSETTLETYPEID,t1.f_Settlement FSETTLETYPEName,'SFKYT01_SYS' FPURPOSEID,'销售收款' FPURPOSEName,t1.f_InAmount FRECTOTALAMOUNTFOR,t1.f_OurAccount FACCOUNTID,t1.f_OurAccountName FACCOUNTName,CONCAT(t1.f_Flowtime,'收到',t1.f_OurAccountName,t1.f_InAmount,'元') FCOMMENT from (select left(f_Flowtime,10) f_Flowtime,f_OurAccount,f_OurAccountName,f_OppAccount,f_OppAccountName,f_OutAmount,f_Settlement,sum(f_InAmount) f_InAmount from t_flowfund_zj where left(f_Flowtime,7)='" & lastMonth & "' and f_IsReceipt='Y' and ifnull(f_Received,'')='' group by left(f_Flowtime,10),f_OurAccount,f_OurAccountName,f_OppAccount,f_OppAccountName,f_OutAmount,f_Settlement) t1 left join t_baseinfo t2 on t1.f_OppAccountName=t2.f_StandardName and t2.f_DataType='客户' left join t_baseinfo t3 on t1.f_Settlement=t3.f_StandardName and t3.f_DataType='结算方式' left join t_baseinfo t4 on t3.f_SystemType=t4.f_SystemType and t4.f_DataType='组织' ", {"rdict": false, "args": []})
+	if Set.Count(iData2) = 0
+		Return "收款单已导入，不再重复导入收款单"
+	end if
+	//关闭网页右上角弹窗
+	For i = 0 To 10 step 1
+		bRet = UiElement.Exists(@ui"文本<span>_", {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bWaitDOMReady": true})
+		TracePrint bRet
+		if bRet = True
+			Mouse.Action(@ui"文本<span>_", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+		Else
+			Break
+		end if
+	Next 
+	//点击搜索按钮
+	Mouse.Action(@ui"图像<img>", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+	//在输入框中输入KHLB
+	Keyboard.InputText(@ui"输入控件<input>", "SKDLB", true, 300, 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 500, "bSetForeground": true, "sSimulate": "uia", "bValidate": false, "bClickBeforeInput": false})
+	//点击供应链-销售管理-基础资料下的客户列表
+	Mouse.Action(@ui"文本<span>_财务会计>应收款管理>应收收款", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+	//点击过滤方案：RPA新增客户
+	Mouse.Action(@ui"块级元素<div>_RPA新增收款单", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+	Delay(5000)
+	//判断 很抱歉，暂时没有相关数据~ 这段文字是否存在
+	bRet = UiElement.Exists(@ui"段落<p>_很抱歉，暂时没有相关数据~", {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bWaitDOMReady": true})
+	//如果存在，则进行新增客户的操作
+	If bRet = true
+		//点击选项右侧的按钮
+		Mouse.Action(@ui"文本<span>", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "uia", "bMoveSmoothly": false})
+		//点击引入按钮
+		Mouse.Action(@ui"文本<span>_引入", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+		//点击选择文件按钮
+		Mouse.Action(@ui"输入控件<input>1", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+		//在文件列表中输入地址
+		Keyboard.InputText(@ui"窗口", InputFolder2, true, 30, 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 500, "bSetForeground": true, "sSimulate": "message", "bValidate": false, "bClickBeforeInput": false})
+		//点击打开按钮
+		Mouse.Action(@ui"窗口_打开(O)", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+		Mouse.Action(@ui"链接<a>_引入数据", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": true})
+		// Mouse.Action(@ui"链接<a>_引入数据", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+		Delay(5000)
+
+		//判断是否有引入失败的提示
+		bRet = UiElement.Exists(@ui"文本<span>_【收款单】成功引入155条，失败1条！请下载引入失败的数据！前往金蝶云社区获取更多", {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bWaitDOMReady": true})
+
+		if bRet = True
+			//引入失败，下载失败数据
+			Mouse.Action(@ui"按钮<button>_确定", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+			//输入地址
+			Keyboard.InputText(@ui"窗口_引入失败_2026021311261458.xlsx", OutputFolder4, true, 30, 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 500, "bSetForeground": true, "sSimulate": "message", "bValidate": false, "bClickBeforeInput": false})
+			//点击保存按钮			
+			Mouse.Action(@ui"窗口_保存(S)", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+			bRet = UiElement.Exists(@ui"文字_客户引入错误信息2026-02-13.xlsx已存在。要替换它吗?", {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bWaitDOMReady": true})
+			if bRet = True
+				Mouse.Action(@ui"窗口_是(Y)", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+			end if
+			Mouse.Action(@ui"链接<a>_取消1", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+
+			Return "引入收款单失败，详情请查看失败信息"
+		else
+			//判断引入成功的提示
+			bRet = UiElement.Exists(@ui"文本<span>_【收款单】成功引入数据155条！", {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bWaitDOMReady": true})
+			if bRet = True
+				//获取提示信息
+				sContent = UiElement.GetValue(@ui"文本<span>_【收款单】成功引入数据155条！", {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200})
+				//点击取消按钮
+				Mouse.Action(@ui"链接<a>_取消", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+			end if
+		end if
+	End If
+	//查询创建状态，点击过滤方案
+	Mouse.Action(@ui"文本<span>_过滤", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+	Mouse.Action(@ui"文本<span>2", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+	Keyboard.InputText(@ui"输入控件<input>2", "创建", true, 300, 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 500, "bSetForeground": true, "sSimulate": "uia", "bValidate": false, "bClickBeforeInput": true})
+	Mouse.Action(@ui"列表项<li>_创建", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+
+	//点击全选按钮
+	Mouse.Action(@ui"链接<a>_确定", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+	bRet = UiElement.Exists(@ui"段落<p>_很抱歉，暂时没有相关数据~", {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bWaitDOMReady": true})
+	If bRet = false
+		Mouse.Action(@ui"链接<a>_", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+		//点击提交按钮
+		Mouse.Action(@ui"文本<span>_提交", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+		For k = 0 To 10 step 1
+			Delay(3000)
+			bRetpl = UiElement.Exists(@ui"文本<span>_处理结果", {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bWaitDOMReady": true})
+			if bRetpl = True
+				Mouse.Action(@ui"文本<span>1", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+				Break
+			end if
+		Next 
+	End If
+
+	//查询提交状态，点击过滤方案
+	Mouse.Action(@ui"文本<span>_过滤", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+	Mouse.Action(@ui"文本<span>2", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+	//点击全选按钮
+	Keyboard.InputText(@ui"输入控件<input>2", "审核中", true, 300, 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 500, "bSetForeground": true, "sSimulate": "uia", "bValidate": false, "bClickBeforeInput": true})
+	Mouse.Action(@ui"列表项<li>_创建", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+	Mouse.Action(@ui"链接<a>_确定", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+	bRet = UiElement.Exists(@ui"段落<p>_很抱歉，暂时没有相关数据~", {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bWaitDOMReady": true})
+	If bRet = false
+		Mouse.Action(@ui"链接<a>_", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+
+		//点击审核按钮
+		Mouse.Action(@ui"文本<span>_审核", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+		For k = 0 To 10 step 1
+			Delay(3000)
+			bRetpl = UiElement.Exists(@ui"文本<span>_处理结果", {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bWaitDOMReady": true})
+			if bRetpl = True
+				Mouse.Action(@ui"文本<span>1", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+				Break
+			end if
+		Next 
+	end if
+	Log.Info("4.系统操作-反写状态")
+	Mouse.Action(@ui"块级元素<div>_默认方案", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+	Delay(1000)
+	Mouse.Action(@ui"块级元素<div>_RPA新增收款单", "left", "click", 10000, {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [], "sSimulate": "simulate", "bMoveSmoothly": false})
+	sContent = UiElement.GetValue(@ui"文本<span>_共156行", {"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200})
+	Delay(1000)
+	TracePrint sContent
+	extract_result = CInt(DigitFromStr(sContent))
+	TracePrint extract_result
+	TracePrint Set.Count(iData2)
+	if Set.Count(iData2) = extract_result
+		iRet = Database.ExecuteSQL(objDatabase, "update t_flowfund_zj  set f_Received='Y' where left(f_Flowtime,7)='" & lastMonth & "' and f_IsReceipt='Y'  and ifnull(f_Received,'')='' ", {"args": []})
+		dTime = Time.Now()
+		dTime = Time.Format(dTime, "yyyy-mm-dd hh:mm:ss")
+		iRet = Database.ExecuteSQL(objDatabase, "update t_processmain set f_Finish4='" & dTime & "' where f_Process_ID='" & Process_ID & "' and f_date='" & f_Date & "' ", {"args": []})
+	end if
+	Database.CloseDB(objDatabase)
+	Log.Info("===============系统操作结束===============")
+	Return "成功：" & sContent
+Catch ex
+	TracePrint ex
+	//调用命令库存储错误日志
+	  lib_bak.组件_MySql错误日志记录(ex, PROCESS_ID, hostMsg, userMsg, passwordMsg, databaseMsg)
+End Try

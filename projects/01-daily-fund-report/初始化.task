@@ -1,0 +1,108 @@
+Dim i, t_processinfo, iRet, objDatabase, dbConnected
+i = 0
+t_processinfo = 0
+dbConnected = false
+
+Try
+    objDatabase = Database.CreateDB("MySQL",{"host": "127.0.0.1", "port": "3306", "user": "root","password": "root","database": "rpa_bank_flow","charset": "utf8"})
+    dbConnected = true
+    TracePrint " 数据库连接成功"
+Catch ex
+    Log.Error " 数据库连接失败: " & CStr(ex)
+End Try
+
+// 扩展汇总列
+If dbConnected
+    Try
+        Database.ExecuteSQL(objDatabase ,"ALTER TABLE t_processinfo ADD COLUMN f_Step1 VARCHAR(255)", {"args": []})
+    Catch ex
+    End Try
+    Try
+        Database.ExecuteSQL(objDatabase ,"ALTER TABLE t_processinfo ADD COLUMN f_Finish1 DATETIME", {"args": []})
+    Catch ex
+    End Try
+    Try
+        Database.ExecuteSQL(objDatabase ,"ALTER TABLE t_processinfo ADD COLUMN f_Step2 VARCHAR(255)", {"args": []})
+    Catch ex
+    End Try
+    Try
+        Database.ExecuteSQL(objDatabase ,"ALTER TABLE t_processinfo ADD COLUMN f_Finish2 DATETIME", {"args": []})
+    Catch ex
+    End Try
+    Try
+        Database.ExecuteSQL(objDatabase ,"ALTER TABLE t_processinfo ADD COLUMN f_Step3 VARCHAR(255)", {"args": []})
+    Catch ex
+    End Try
+    Try
+        Database.ExecuteSQL(objDatabase ,"ALTER TABLE t_processinfo ADD COLUMN f_Finish3 DATETIME", {"args": []})
+    Catch ex
+    End Try
+    Try
+        Database.ExecuteSQL(objDatabase ,"ALTER TABLE t_processinfo ADD COLUMN f_Step4 VARCHAR(255)", {"args": []})
+    Catch ex
+    End Try
+    Try
+        Database.ExecuteSQL(objDatabase ,"ALTER TABLE t_processinfo ADD COLUMN f_Finish4 DATETIME", {"args": []})
+    Catch ex
+    End Try
+    Try
+        Database.ExecuteSQL(objDatabase ,"ALTER TABLE t_processinfo ADD COLUMN f_Step5 VARCHAR(255)", {"args": []})
+    Catch ex
+    End Try
+    Try
+        Database.ExecuteSQL(objDatabase ,"ALTER TABLE t_processinfo ADD COLUMN f_Finish5 DATETIME", {"args": []})
+    Catch ex
+    End Try
+End If
+
+Do While i < 3 And dbConnected
+    i = i + 1
+    TracePrint "======= 第 " & CStr(i) & " 次执行状态创建 ======="
+
+    // ====== 查询状态======
+    Try
+        iRet = Database.QueryOne(objDatabase ,"SELECT f_Status FROM t_processinfo WHERE f_Process_ID='ZJB0001-001' AND f_Process_Block='流程汇总'", {"rdict": false, "args": []})
+        t_processinfo = CInt(iRet[0])
+        TracePrint " 查询结果 f_Status = " & CStr(t_processinfo)
+    Catch ex
+        TracePrint "第" & CStr(i) & "次异常查询: " & CStr(ex)
+        Delay 1000
+        t_processinfo = 0
+    End Try
+
+    // ====== 已完成直接结束 ======
+    If t_processinfo = 1
+        TracePrint "流程状态为【已完成】，直接结束流程"
+        Break
+    End If
+    TracePrint "流程状态标记为【未完成】，执行状态创建"
+
+    Try
+        // ====== 更新状态 ======
+        Database.ExecuteSQL(objDatabase ,"UPDATE t_processinfo SET f_Status=1, f_End_Time=NOW(), f_Update_Time=NOW() WHERE f_Process_ID='ZJB0001-001' AND f_Process_Block='流程汇总'", {"args": []})
+        t_processinfo = 1
+        TracePrint " UPDATE 执行成功"
+    Catch ex
+        TracePrint "UPDATE 异常: " & CStr(ex)
+        Delay 1000
+        t_processinfo = 0
+    End Try
+
+    If t_processinfo = 1
+        TracePrint " 状态创建正常，终止循环"
+        
+    Else
+        TracePrint "第" & CStr(i) & "次状态创建失败"
+        Delay 1000
+    End If
+Loop
+
+If dbConnected = false
+    Log.Error(" 数据库连接失败，无法执行状态创建")
+ElseIf i >= 3 And t_processinfo <> 1
+    Log.Error(" 3次全部失败，归档写入日志表，流程执行异常终止")
+Else
+    TracePrint " 流程全部执行成功"
+End If
+
+TracePrint "状态创建流程执行完毕"

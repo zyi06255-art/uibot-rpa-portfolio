@@ -1,0 +1,203 @@
+// ============================================================
+// 流程块.task — 合并2023-2025年度财务报表（鲁泰A 000726）
+// ============================================================
+Dim resPath = "D:\\laiye project\\课程作业\\res\\"
+Dim stockName = "药明康德"
+Dim file2023 = resPath & stockName & "2023年度财务报表.xlsx"
+Dim file2024 = resPath & stockName & "2024年度财务报表.xlsx"
+Dim file2025 = resPath & stockName & "2025年度财务报表.xlsx"
+Dim mergedFile = resPath & stockName & "2023-2025合并财务报表.xlsx"
+Dim bExists = false
+Dim obj2023 = null
+Dim obj2024 = null
+Dim obj2025 = null
+Dim reportTypes = ["资产负债表", "利润表", "现金流量表"]
+Dim reportType = ""
+Dim arr2023 = []
+Dim arr2024 = []
+Dim arr2025 = []
+Dim rows2023 = 0
+Dim rows2024 = 0
+Dim rows2025 = 0
+Dim i = 0
+Dim j = 0
+Dim itemName = ""
+Dim found = false
+Dim itemOrder = []
+Dim itemCount = 0
+Dim data2023 = []
+Dim data2024 = []
+Dim data2025 = []
+Dim cellA = ""
+Dim outRow = []
+Dim val2023 = ""
+Dim val2024 = ""
+Dim val2025 = ""
+Dim rowIdx = 0
+Dim headerRow = []
+Dim foundItem = ""
+Dim searchIdx = 0
+
+// === 步骤1：确认文件存在 ===
+TracePrint "========== 步骤1：确认年度财报文件 =========="
+bExists = File.FileExists(file2023)
+If bExists = false
+    Log.Error "未找到: " & file2023
+    Exit()
+End If
+bExists = File.FileExists(file2024)
+If bExists = false
+    Log.Error "未找到: " & file2024
+    Exit()
+End If
+bExists = File.FileExists(file2025)
+If bExists = false
+    Log.Error "未找到: " & file2025
+    Exit()
+End If
+TracePrint "三个年度文件确认存在"
+
+// === 步骤2：打开源文件 ===
+TracePrint "========== 步骤2：打开源文件 =========="
+obj2023 = Excel.Open(file2023, true, "Excel", "", "")
+obj2024 = Excel.Open(file2024, true, "Excel", "", "")
+obj2025 = Excel.Open(file2025, true, "Excel", "", "")
+
+// === 步骤3：以2023为模板另存合并文件 ===
+TracePrint "========== 步骤3：创建合并文件 =========="
+Excel.SaveAs(obj2023, resPath, stockName & "2023-2025合并财务报表", "xlsx")
+TracePrint "合并文件已创建: " & mergedFile
+
+// === 步骤4：逐报表合并 ===
+TracePrint "========== 步骤4：逐报表合并 =========="
+For Each reportType In reportTypes
+    TracePrint "--- 合并 " & reportType & " ---"
+
+    rows2023 = Excel.GetRowsCount(obj2023, reportType)
+    rows2024 = Excel.GetRowsCount(obj2024, reportType)
+    rows2025 = Excel.GetRowsCount(obj2025, reportType)
+    arr2023 = Excel.ReadRange(obj2023, reportType, "A1:B" & CStr(rows2023), false)
+    arr2024 = Excel.ReadRange(obj2024, reportType, "A1:B" & CStr(rows2024), false)
+    arr2025 = Excel.ReadRange(obj2025, reportType, "A1:B" & CStr(rows2025), false)
+    TracePrint "2023:" & CStr(rows2023) & " 2024:" & CStr(rows2024) & " 2025:" & CStr(rows2025)
+
+    // 整理每年数据
+    data2023 = []
+    For i = 0 To rows2023 - 1
+        If arr2023[i] <> null
+            itemName = CStr(arr2023[i][0])
+            If itemName <> null and itemName <> "" and itemName <> "None"
+                Push data2023, [itemName, CStr(arr2023[i][1])]
+            End If
+        End If
+    Next
+    data2024 = []
+    For i = 0 To rows2024 - 1
+        If arr2024[i] <> null
+            itemName = CStr(arr2024[i][0])
+            If itemName <> null and itemName <> "" and itemName <> "None"
+                Push data2024, [itemName, CStr(arr2024[i][1])]
+            End If
+        End If
+    Next
+    data2025 = []
+    For i = 0 To rows2025 - 1
+        If arr2025[i] <> null
+            itemName = CStr(arr2025[i][0])
+            If itemName <> null and itemName <> "" and itemName <> "None"
+                Push data2025, [itemName, CStr(arr2025[i][1])]
+            End If
+        End If
+    Next
+
+    // 构建唯一项目列表（数组去重）
+    itemOrder = []
+    itemCount = 0
+    For i = 0 To UBound(data2023)
+        itemName = data2023[i][0]
+        found = false
+        For j = 0 To itemCount - 1
+            If itemOrder[j] = itemName
+                found = true
+                Break
+            End If
+        Next
+        If found = false
+            Push itemOrder, itemName
+            itemCount = itemCount + 1
+        End If
+    Next
+    For i = 0 To UBound(data2024)
+        itemName = data2024[i][0]
+        found = false
+        For j = 0 To itemCount - 1
+            If itemOrder[j] = itemName
+                found = true
+                Break
+            End If
+        Next
+        If found = false
+            Push itemOrder, itemName
+            itemCount = itemCount + 1
+        End If
+    Next
+    For i = 0 To UBound(data2025)
+        itemName = data2025[i][0]
+        found = false
+        For j = 0 To itemCount - 1
+            If itemOrder[j] = itemName
+                found = true
+                Break
+            End If
+        Next
+        If found = false
+            Push itemOrder, itemName
+            itemCount = itemCount + 1
+        End If
+    Next
+    TracePrint "唯一项目数: " & CStr(itemCount)
+
+    // 写入合并Sheet（Sheet已存在）
+    headerRow = ["项目", "2023年金额", "2024年金额", "2025年金额"]
+    Excel.WriteRow(obj2023, reportType, "A1", headerRow, false)
+
+    For i = 0 To itemCount - 1
+        foundItem = itemOrder[i]
+        rowIdx = i + 2
+        cellA = "A" & CStr(rowIdx)
+        val2023 = "-"
+        For searchIdx = 0 To UBound(data2023)
+            If data2023[searchIdx][0] = foundItem
+                val2023 = data2023[searchIdx][1]
+                Break
+            End If
+        Next
+        val2024 = "-"
+        For searchIdx = 0 To UBound(data2024)
+            If data2024[searchIdx][0] = foundItem
+                val2024 = data2024[searchIdx][1]
+                Break
+            End If
+        Next
+        val2025 = "-"
+        For searchIdx = 0 To UBound(data2025)
+            If data2025[searchIdx][0] = foundItem
+                val2025 = data2025[searchIdx][1]
+                Break
+            End If
+        Next
+        outRow = [foundItem, val2023, val2024, val2025]
+        Excel.WriteRow(obj2023, reportType, cellA, outRow, false)
+    Next
+    TracePrint reportType & " 写入 " & CStr(itemCount) & " 行"
+Next
+
+// === 步骤5：保存关闭 ===
+TracePrint "========== 步骤5：保存关闭 =========="
+Excel.Close(obj2024, false)
+Excel.Close(obj2025, false)
+Excel.Save(obj2023)
+Excel.Close(obj2023, true)
+App.Kill("EXCEL.EXE")
+App.Kill("WPS.EXE")
+TracePrint "========== 合并完成！=========="

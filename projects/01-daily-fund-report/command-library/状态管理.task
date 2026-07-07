@@ -1,0 +1,44 @@
+// ===== 状态管理命令库 =====
+
+Function CreateStatus(processId, processBlock, processName)
+    Dim objDatabase, iRet, result
+    result = 0
+    Try
+        objDatabase = Database.CreateDB("MySQL", {"host": "127.0.0.1", "port": "3306", "user": "root", "password": "root", "database": "rpa_bank_flow", "charset": "utf8"})
+        Database.ExecuteSQL(objDatabase, "INSERT INTO t_processinfo (f_Process_ID, f_Process_Block, f_Process_Name, f_Status, f_Start_Time, f_End_Time, f_Create_Time, f_Update_Time) VALUES ('" & processId & "', '" & processBlock & "', '" & processName & "', 0, NOW(), NOW(), NOW(), NOW())", {"args": []})
+        result = 1
+        TracePrint " [命令库] 状态创建成功: " & processId & " / " & processBlock
+    Catch ex
+        Log.Error " [命令库] 创建状态失败: " & CStr(ex)
+        result = 0
+    End Try
+    CreateStatus = result
+End Function
+
+Function UpdateStatus(processId, processBlock, status)
+    Dim objDatabase, result
+    result = 0
+    Try
+        objDatabase = Database.CreateDB("MySQL", {"host": "127.0.0.1", "port": "3306", "user": "root", "password": "root", "database": "rpa_bank_flow", "charset": "utf8"})
+        Database.ExecuteSQL(objDatabase, "UPDATE t_processinfo SET f_Status=" & CStr(status) & ", f_End_Time=NOW(), f_Update_Time=NOW() WHERE f_Process_ID='" & processId & "' AND f_Process_Block='" & processBlock & "'", {"args": []})
+        result = 1
+        TracePrint " [命令库] 状态更新成功: " & processId & " / " & processBlock & " -> " & CStr(status)
+    Catch ex
+        Log.Error " [命令库] 更新状态失败: " & CStr(ex)
+        result = 0
+    End Try
+    UpdateStatus = result
+End Function
+
+Function QueryStatus(processId, processBlock)
+    Dim objDatabase, iRet, result
+    result = 0
+    Try
+        objDatabase = Database.CreateDB("MySQL", {"host": "127.0.0.1", "port": "3306", "user": "root", "password": "root", "database": "rpa_bank_flow", "charset": "utf8"})
+        iRet = Database.QueryOne(objDatabase, "SELECT f_Status FROM t_processinfo WHERE f_Process_ID='" & processId & "' AND f_Process_Block='" & processBlock & "' ORDER BY f_ID DESC LIMIT 1", {"rdict": false, "args": []})
+        result = CInt(iRet[0])
+    Catch ex
+        result = 0
+    End Try
+    QueryStatus = result
+End Function

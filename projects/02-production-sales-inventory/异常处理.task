@@ -1,0 +1,24 @@
+Dim iRet,hWeb,sRet
+Try 3
+	Dim sTime = Time.Now()
+    sTime = Time.DateAdd("d",-1,sTime)
+	Dim staTime = Time.Format(sTime, "yyyy-mm-dd")
+	Dim objDatabase = Database.CreateDB("MySQL", {"host": "10.44.76.35", "port": "3306", "user": "rpa", "password": "Q3/L3z18Y3rj1DW0C8vuuQ==", "database": "RPA", "charset": "utf8"})
+	iRet = Database.QueryOne(objDatabase, "select IFNULL(f_Status,'') Status from t_processmain where f_Process_ID='"&Process_ID&"' and f_date='"&staTime&"' ", {"rdict": true, "args": []})
+	TracePrint "select IFNULL(f_Status,'') Status from t_processmain where f_Process_ID='"&Process_ID&"' and f_date='"&staTime&"' "
+    TracePrint iRet["Status"]
+	if UBound(iRet) = -1
+
+	Elseif iRet["Status"]="已完成"
+		retryCount = 3
+	Else
+		retryCount = retryCount+1
+	end if
+Catch ex
+	Log.Error(ex)
+	Dim ip_server = Sys.Command("ipconfig")
+	Dim ipv4 = Regex.FindStr(ip_server, "(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})", 0)
+	Dim Gdtime = Time.Format(now_dTime, "yyyy-mm-dd hh:mm:ss")
+	Dim count = Database.ExecuteSQL(objDatabase, "INSERT INTO t_rpa_exception_log(f_DepName,f_Server,f_Process_ID,f_Task,f_Line,f_Msg,f_Time) VALUES(%s,%s,%s,%s,%s,%s,%s)", {"args": ["经管部", ipv4, Process_ID, ex["File"], ex["Line"], ex["Message"], Gdtime]})
+	Database.CloseDB(objDatabase)
+End Try

@@ -1,0 +1,45 @@
+// ============================================================
+// PDF识别流程块.task
+// 功能: 自动识别PDF类型(数字/扫描), 提取结构化数据输出JSON
+// 依赖: pymupdf, paddleocr, opencv-python-headless
+// ============================================================
+
+// ===== 变量定义 =====
+Dim pdfPath = ""        // 输入: PDF文件路径, 例 "C:\Users\DELL\Desktop\汇票.pdf"
+Dim outputDir = ""      // 输入: 输出目录, 默认PDF同目录
+Dim jsonResult = ""     // 输出: JSON结果文件路径
+Dim ocrData = {}        // 输出: 识别结果字典
+Dim elapsedTime = 0     // 输出: 处理耗时(秒)
+
+// ===== 主流程 =====
+If pdfPath = "" or pdfPath = null
+    TracePrint "[错误] pdfPath 不能为空"
+    Exit()
+End If
+
+// 检查文件是否存在
+If Not File.FileExists(pdfPath)
+    TracePrint "[错误] PDF文件不存在: " & pdfPath
+    Exit()
+End If
+
+// 默认输出目录
+If outputDir = "" or outputDir = null
+    outputDir = Left(pdfPath, Len(pdfPath) - 4) & "_result"
+End If
+File.CreateFolder(outputDir)
+
+// 调用Python识别块
+Dim startTime = Time.Now()
+Dim pyResult = {}  // Python块返回值
+
+// Python块接收 pdfPath 和 outputDir 作为全局变量
+// 返回: {"type":"digital"|"scanned", "data":{...}, "json_path":"...", "elapsed":3.5}
+
+jsonResult = outputDir & "\\result.json"
+
+// 等待Python块完成
+Delay 200
+
+TracePrint "[完成] 结果保存到: " & jsonResult
+TracePrint "[完成] 耗时: " & CStr(elapsedTime) & "秒"

@@ -1,0 +1,30 @@
+name: Validate Knowledge Base
+
+on:
+  push:
+    paths:
+      - 'knowledge-base/**'
+  pull_request:
+    paths:
+      - 'knowledge-base/**'
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Markdown links
+        uses: gaurav-nelson/github-action-markdown-link-check@v1
+        with:
+          folder-path: 'knowledge-base/'
+          max-depth: 1
+
+      - name: Verify file structure
+        run: |
+          echo "Checking knowledge-base structure..."
+          test -f knowledge-base/CLAUDE.md && echo "✓ CLAUDE.md" || echo "✗ CLAUDE.md missing"
+          test -f knowledge-base/uibot-api-full.md && echo "✓ uibot-api-full.md" || echo "✗ uibot-api-full.md missing"
+          test -f knowledge-base/README.md && echo "✓ README.md" || echo "✗ README.md missing"
+          test -f knowledge-base/settings.json && echo "✓ settings.json" || echo "✗ settings.json missing"

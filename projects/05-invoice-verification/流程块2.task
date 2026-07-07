@@ -1,0 +1,29 @@
+// ============================================
+// 流程块：查验完成处理
+// 功能：
+//   1. 弹框提示所有发票已查验完成
+//   2. 关闭浏览器
+// ============================================
+
+// ---- 步骤4：提示所有发票查验完成 ----
+Dialog.MsgBox "所有发票已全部查验完成！", "查验完成", 0, 1, 600000
+
+// ---- 步骤5：关闭浏览器 ----
+Try
+    // 结束 Chrome 进程
+    If App.GetStatus("chrome.exe")
+        App.Kill "chrome.exe"
+    Else
+        // Chrome 进程已不存在，无需处理
+    End If
+Catch ex
+    Log.Error "关闭浏览器异常: " & CStr(ex)
+    // 兜底：强制结束 Chrome 进程
+    Try
+        App.Kill "chrome.exe"
+    Catch ex2
+        Log.Error "强制结束Chrome进程也失败: " & CStr(ex2)
+    End Try
+End Try
+
+TracePrint "所有步骤执行完毕，浏览器已关闭"

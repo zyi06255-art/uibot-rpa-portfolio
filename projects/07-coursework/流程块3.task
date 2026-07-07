@@ -1,0 +1,45 @@
+Dim objRet, cwbb2023, cwbb2024, cwbb2025, arrayRet
+Dim zcfzb2023, lrb2023, xjllb2023
+Dim zcfzb2024, lrb2024, xjllb2024
+Dim zcfzb2025, lrb2025, xjllb2025
+
+cwbb2023 = Excel.Open(@res"鲁泰A2023年度财务报表.xlsx", true, "Excel", "", "")
+cwbb2024 = Excel.Open(@res"鲁泰A2024年度财务报表.xlsx", true, "Excel", "", "")
+cwbb2025 = Excel.Open(@res"鲁泰A2025年度财务报表.xlsx", true, "Excel", "", "")
+cwbbhb = Excel.Open(@res"财务报表与财务分析.xlsx", true, "Excel", "", "")
+
+// === 资产负债表：2023→A列, 2024→E列, 2025→I列 ===
+zcfzb2023 = Excel.ReadRange(cwbb2023, "资产负债表", "A1:B95", true)
+Excel.WriteRange(cwbbhb, "资产负债表", "A1", zcfzb2023, true)
+
+zcfzb2024 = Excel.ReadRange(cwbb2024, "资产负债表", "A1:B95", true)
+Excel.WriteRange(cwbbhb, "资产负债表", "E1", zcfzb2024, true)
+
+zcfzb2025 = Excel.ReadRange(cwbb2025, "资产负债表", "A1:B95", true)
+Excel.WriteRange(cwbbhb, "资产负债表", "I1", zcfzb2025, true)
+
+// === 利润表：2023→A列, 2024→E列, 2025→I列 ===
+lrb2023 = Excel.ReadRange(cwbb2023, "利润表", "A1:B32", true)
+Excel.WriteRange(cwbbhb, "利润表", "A1", lrb2023, true)
+
+lrb2024 = Excel.ReadRange(cwbb2024, "利润表", "A1:B32", true)
+Excel.WriteRange(cwbbhb, "利润表", "E1", lrb2024, true)
+
+lrb2025 = Excel.ReadRange(cwbb2025, "利润表", "A1:B32", true)
+Excel.WriteRange(cwbbhb, "利润表", "I1", lrb2025, true)
+
+// === 现金流量表：2023→A列, 2024→E列, 2025→I列 ===
+xjllb2023 = Excel.ReadRange(cwbb2023, "现金流量表", "A1:B77", true)
+Excel.WriteRange(cwbbhb, "现金流量表", "A1", xjllb2023, true)
+
+xjllb2024 = Excel.ReadRange(cwbb2024, "现金流量表", "A1:B77", true)
+Excel.WriteRange(cwbbhb, "现金流量表", "E1", xjllb2024, true)
+
+xjllb2025 = Excel.ReadRange(cwbb2025, "现金流量表", "A1:B77", true)
+Excel.WriteRange(cwbbhb, "现金流量表", "I1", xjllb2025, true)
+
+Excel.Save(cwbbhb)
+Excel.Close(cwbb2023, true)
+Excel.Close(cwbb2024, true)
+Excel.Close(cwbb2025, true)
+Excel.Close(cwbbhb, true)

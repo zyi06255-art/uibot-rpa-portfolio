@@ -1,0 +1,27 @@
+
+Dim last_dTime, iRet
+
+Rem "创建人：王元霖"
+Rem "创建日期：2025-12-30"
+Rem "业务描述：创建状态"
+Try 3
+	Log.Info("===============反写状态流程开始===============")
+	Dim now_dTime = Time.Now()
+	Dim dTime = Time.Now()
+	last_dTime = Time.DateAdd("d", -1, dTime)
+	Dim objDatabase = Database.CreateDB("MySQL", {"host": "10.44.76.35", "port": "3306", "user": "rpa", "password": "Q3/L3z18Y3rj1DW0C8vuuQ==", "database": "RPA", "charset": "utf8"})
+	Dim lastDate = Time.Format(last_dTime, "yyyy-mm-dd")
+	Dim nowDatetime = Time.Format(now_dTime, "yyyy-mm-dd hh:mm:ss")
+	Rem "更新当日的状态数据"
+	TracePrint "UPDATE t_processmain\n SET\n    f_Status = %s,\n    f_EndTime = %s\nWHERE\n    (f_Step1 IS NULL OR (f_Step1 != '' AND f_Finish1 IS NOT NULL))\n    AND (f_Step2 IS NULL OR (f_Step2 != '' AND f_Finish2 IS NOT NULL))\n    AND (f_Step3 IS NULL OR (f_Step3 != '' AND f_Finish3 IS NOT NULL))\n    AND (f_Step4 IS NULL OR (f_Step4 != '' AND f_Finish4 IS NOT NULL))\n    AND (f_Step5 IS NULL OR (f_Step5 != '' AND f_Finish5 IS NOT NULL))\n    AND (f_Step6 IS NULL OR (f_Step6 != '' AND f_Finish6 IS NOT NULL))\n    AND (f_Step7 IS NULL OR (f_Step7 != '' AND f_Finish7 IS NOT NULL))\n    AND (f_Step8 IS NULL OR (f_Step8 != '' AND f_Finish8 IS NOT NULL))\n    AND (f_Step9 IS NULL OR (f_Step9 != '' AND f_Finish9 IS NOT NULL))\n    AND (f_Step10 IS NULL OR (f_Step10 != '' AND f_Finish10 IS NOT NULL))\n    AND (f_Step11 IS NULL OR (f_Step11 != '' AND f_Finish11 IS NOT NULL))\n    AND (f_Step12 IS NULL OR (f_Step12 != '' AND f_Finish12 IS NOT NULL))\n    AND f_DownNum = f_DBNum and f_Process_ID=%s and f_Date=%s;"
+	Dim update_count = Database.ExecuteSQL(objDatabase, "UPDATE t_processmain\n SET\n    f_Status = %s,\n    f_EndTime = %s\nWHERE\n    (f_Step1 IS NULL OR (f_Step1 != '' AND f_Finish1 IS NOT NULL))\n    AND (f_Step2 IS NULL OR (f_Step2 != '' AND f_Finish2 IS NOT NULL))\n    AND (f_Step3 IS NULL OR (f_Step3 != '' AND f_Finish3 IS NOT NULL))\n    AND (f_Step4 IS NULL OR (f_Step4 != '' AND f_Finish4 IS NOT NULL))\n    AND (f_Step5 IS NULL OR (f_Step5 != '' AND f_Finish5 IS NOT NULL))\n    AND (f_Step6 IS NULL OR (f_Step6 != '' AND f_Finish6 IS NOT NULL))\n    AND (f_Step7 IS NULL OR (f_Step7 != '' AND f_Finish7 IS NOT NULL))\n    AND (f_Step8 IS NULL OR (f_Step8 != '' AND f_Finish8 IS NOT NULL))\n    AND (f_Step9 IS NULL OR (f_Step9 != '' AND f_Finish9 IS NOT NULL))\n    AND (f_Step10 IS NULL OR (f_Step10 != '' AND f_Finish10 IS NOT NULL))\n    AND (f_Step11 IS NULL OR (f_Step11 != '' AND f_Finish11 IS NOT NULL))\n    AND (f_Step12 IS NULL OR (f_Step12 != '' AND f_Finish12 IS NOT NULL))\n    AND f_DownNum = f_DBNum and f_Process_ID=%s and f_Date=%s;", {"args": ['已完成', nowDatetime, Process_ID, lastDate]})
+	Database.CloseDB(objDatabase)
+	Log.Info("===============反写状态流程结束===============")
+Catch ex
+	Log.Error(ex)
+	Dim ip_server = Sys.Command("ipconfig")
+	Dim ipv4 = Regex.FindStr(ip_server, "(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})", 0)
+	Dim Gdtime = Time.Format(now_dTime, "yyyy-mm-dd hh:mm:ss")
+	Dim count = Database.ExecuteSQL(objDatabase, "INSERT INTO t_rpa_exception_log(f_DepName,f_Server,f_Process_ID,f_Task,f_Line,f_Msg,f_Time) VALUES(%s,%s,%s,%s,%s,%s,%s)", {"args": ["经管部", ipv4, Process_ID, ex["File"], ex["Line"], ex["Message"], Gdtime]})
+	Database.CloseDB(objDatabase)
+End Try

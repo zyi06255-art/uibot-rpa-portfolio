@@ -1,0 +1,35 @@
+Dim iRet,Date,last_dTime
+// Dim objDatabase,iRet,sRet,errTask,errLine,errMsg
+Rem "创建人：王元霖"
+Rem "创建日期：2025-12-30"
+Rem "业务描述：创建状态"
+Try 3
+Log.Info("===============创建状态流程开始===============")
+Dim now_dTime = Time.Now()
+Dim dTime = Time.Now()
+last_dTime=Time.DateAdd("d",-1,dTime)
+Dim objDatabase = Database.CreateDB("MySQL",{"host": "10.44.76.35", "port": "3306", "user": "rpa","password": "Q3/L3z18Y3rj1DW0C8vuuQ==","database": "RPA","charset": "utf8"})
+Dim lastDate = Time.Format(last_dTime,"yyyy-mm-dd")
+Rem "判断是否有当日的状态数据，否则插入状态数据"
+iRet = Database.QueryAll(objDatabase ,"select count(1) from t_processmain where f_Process_ID=%s and f_Date=%s" ,{"rdict": false, "args": [Process_ID,lastDate]})
+If iRet[0][0]=0 
+
+Dim insert_count = Database.ExecuteSQL(objDatabase ,"insert ignore into t_processmain(f_Process_ID,f_Date,f_Step1,f_Step2,f_Step3,f_Step4,f_Step5) values(%s,%s,%s,%s,%s,%s,%s)", {"args":  [Process_ID,lastDate,"创建状态","下载文件","数据存储与更新","数据运算与处理","消息与文件分发"]})
+End If
+Rem "判断当日的状态数据的创建状态是否完成，否则更新状态时间"
+iRet = Database.QueryAll(objDatabase ,"select count(1) from t_processmain where f_Process_ID=%s and f_Date=%s and f_Finish1 is null" ,{"rdict": false, "args": [Process_ID,lastDate]})
+Dim nowDatetime = Time.Format(now_dTime,"yyyy-mm-dd hh:mm:ss")
+If iRet[0][0]<>0 
+
+Dim update_count = Database.ExecuteSQL(objDatabase ,"update t_processmain set f_Finish1=%s  where f_Process_ID=%s and f_Date=%s", {"args":  [nowDatetime,Process_ID,lastDate]})
+End If
+Database.CloseDB(objDatabase)
+Log.Info("===============创建状态流程结束===============")
+Catch ex
+Log.Error(ex)
+Dim ip_server = Sys.Command("ipconfig")
+Dim ipv4 = Regex.FindStr(ip_server,"(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})",0)
+Dim Gdtime = Time.Format(now_dTime,"yyyy-mm-dd hh:mm:ss")
+Dim count = Database.ExecuteSQL(objDatabase ,"INSERT INTO t_rpa_exception_log(f_DepName,f_Server,f_Process_ID,f_Task,f_Line,f_Msg,f_Time) VALUES(%s,%s,%s,%s,%s,%s,%s)", {"args":  [DepName,ipv4,Process_ID,ex["File"],ex["Line"],ex["Message"],Gdtime]})
+Database.CloseDB(objDatabase)
+End Try

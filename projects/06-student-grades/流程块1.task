@@ -1,0 +1,20 @@
+// =============================================
+// 流程块1.task — 全局异常流程块
+// =============================================
+
+g_current_step = "异常流程块"
+
+Log.Error "========================================"
+Log.Error "[异常流程块] 流程异常中止！"
+Log.Error "[异常流程块] 异常步骤: " & g_current_step
+Log.Error "[异常流程块] 异常信息: " & g_exception_msg
+Log.Error "[异常流程块] 已处理: " & CStr(g_processed_count)
+Log.Error "========================================"
+
+g_exception_occurred = true
+
+If g_exception_msg = null Or g_exception_msg = ""
+    g_exception_msg = "[异常流程块] 未知异常"
+End If
+
+Log.Info "[异常流程块] 跳转到发送邮件"

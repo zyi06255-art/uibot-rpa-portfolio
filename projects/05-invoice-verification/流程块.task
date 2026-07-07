@@ -1,0 +1,28 @@
+// ============================================
+// 流程块：打开发票查验平台
+// 功能：启动浏览器，导航到国家税务总局发票查验平台
+// 网址：https://inv-veri.chinatax.gov.cn/
+// ============================================
+
+// ---- 步骤1：启动浏览器并导航到查验平台 ----
+// 【重要】浏览器启动方式请根据实际环境选择：
+//
+// 方式A（推荐）：在 UiBot 流程图中拖入"启动浏览器"可视化命令，
+//   目标 URL 填写：https://inv-veri.chinatax.gov.cn/
+//   然后删除下面 Try 块中的 App.Start 行。
+//
+// 方式B：通过命令行启动 Chrome
+//   App.Start 若不可用，请替换为 Shell.Run 或其他启动命令
+Dim hWeb
+Try
+    hWeb = WebBrowser.Create("edge","https://inv-veri.chinatax.gov.cn/",30000,{"bContinueOnError":false,"iDelayAfter":300,"iDelayBefore":200,"sBrowserPath":"","sStartArgs":""})
+Catch ex
+    Log.Error "浏览器启动失败: " & CStr(ex)
+    Dialog.MsgBox "浏览器启动失败，请手动打开查验平台", "错误", 0, 1, 600000
+    Exit()
+End Try
+
+// 等待页面加载
+Delay 5000
+
+TracePrint "发票查验平台已打开，页面加载完成"

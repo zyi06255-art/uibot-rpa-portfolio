@@ -1,0 +1,181 @@
+/*
+1.文件生成与输出-关闭excel及wps进程
+2.文件生成与输出-生成新增客户的文件
+3.文件生成与输出-生成新增收款单的文件
+4.文件生成与输出-反写状态
+*/
+PROCESS_ID = "ZJB0002"
+hostMsg = "127.0.0.1"
+userMsg = "root"
+passwordMsg = "root"
+databaseMsg = "rpa"
+Dim arr_info, arrayRet, dTime, f_Date, objExcelWorkBook, sName
+Dim objDatabase, arrTitle, filePath, iData1, iData2
+Dim objDatatable, objDatatable1, objDatatable2, objDatatable3, objDatatable4, objDatatable5, objDatatable6, objDatatable7, objDatatable8, objDatatable9
+
+dTime = Time.Date()
+dTime = Time.DateAdd("d", -1, dTime)
+Dim year = Time.Format(dTime, "yyyy")
+Dim month = Time.Format(dTime, "mm")
+Dim day = Time.Format(dTime, "yyyy-mm-dd")
+f_Date = Time.Format(dTime, "yyyy-mm-dd")
+objDatabase = Database.CreateDB("MySQL", {"host": hostMsg, "port": "3306", "user": userMsg, "password": passwordMsg, "database": databaseMsg, "charset": "utf8"})
+
+Dim iRet = Database.QueryOne(objDatabase, "select 1 from t_processmain where f_Process_ID='" & PROCESS_ID & "' and f_Step3='文件生成与输出' and IFNULL(f_Finish3,'')<>'' and f_Date='" & f_Date & "'", {"rdict": true, "args": []})
+If UBound(iRet) >= 0
+    Log.Info("文件生成与输出已完成，退出当前流程")
+    Database.CloseDB(objDatabase)
+    Return "已完成"
+End If
+
+Try 1
+    Log.Info("===============文件生成与输出开始===============")
+    Log.Info("1.文件生成与输出-关闭excel及wps进程")
+    App.Kill("EXCEL.EXE")
+    App.Kill("wps.exe")
+    filePath = @res"资金部\\生成文件\\" & year & "\\" & month & "\\" & day
+    TracePrint filePath
+    // 自动创建输出目录
+    If File.FolderExists(filePath) = False
+        File.CreateFolder(filePath)
+    End If
+
+    // 确保组织存在
+    iRet = Database.QueryOne(objDatabase, "select 1 from t_baseinfo where f_DataType='组织' limit 1", {"rdict": true, "args": []})
+    If UBound(iRet) < 0
+        Database.ExecuteSQL(objDatabase, "insert into t_baseinfo (f_ID,f_DataType,f_SourceCode,f_SourceName,f_StandardCode,f_StandardName,f_SystemType,f_Status,f_Sort,f_CreateTime) values ('100','组织','100','蓝海实业集团','100','蓝海实业集团','ORG','1',0,NOW())", {"args": []})
+    End If
+    // 确保结算方式存在
+    iRet = Database.QueryOne(objDatabase, "select 1 from t_baseinfo where f_DataType='结算方式' limit 1", {"rdict": true, "args": []})
+    If UBound(iRet) < 0
+        Database.ExecuteSQL(objDatabase, "insert into t_baseinfo (f_ID,f_DataType,f_SourceCode,f_SourceName,f_StandardCode,f_StandardName,f_SystemType,f_Status,f_Sort,f_CreateTime) values ('DH001','结算方式','DH001','电汇','DH001','电汇','ORG','1',0,NOW())", {"args": []})
+        Database.ExecuteSQL(objDatabase, "insert into t_baseinfo (f_ID,f_DataType,f_SourceCode,f_SourceName,f_StandardCode,f_StandardName,f_SystemType,f_Status,f_Sort,f_CreateTime) values ('WX001','结算方式','WX001','微信','WX001','微信','ORG','1',0,NOW())", {"args": []})
+        Database.ExecuteSQL(objDatabase, "insert into t_baseinfo (f_ID,f_DataType,f_SourceCode,f_SourceName,f_StandardCode,f_StandardName,f_SystemType,f_Status,f_Sort,f_CreateTime) values ('ZFB001','结算方式','ZFB001','支付宝','ZFB001','支付宝','ORG','1',0,NOW())", {"args": []})
+    End If
+
+    // 重置客户导出标记
+    Database.ExecuteSQL(objDatabase, "update t_baseinfo set f_Remark=null where f_DataType='客户'", {"args": []})
+
+    Log.Info("2.文件生成与输出-生成新增客户的文件")
+    // FBillHead 格式: 客户{时间}金蝶云星空{客户编码}
+    iData1 = Database.QueryAll(objDatabase, "select CONCAT('客户', DATE_FORMAT(NOW(),'%%Y-%%m-%%d %%H:%%i:%%s'), '金蝶云星空', b.f_StandardCode), a.f_StandardCode, a.f_StandardName, b.f_StandardCode, a.f_StandardCode, a.f_StandardName, '', b.f_StandardName, 'PRE001', '人民币', 1 from t_baseinfo a, t_baseinfo b where a.f_SystemType=b.f_SystemType and a.f_DataType='组织' and b.f_DataType='客户' and b.f_Remark is null order by b.f_StandardCode", {"rdict": false, "args": []})
+    If Set.Count(iData1) >= 1
+        // 集合转换成数组
+        iData1 = Set.ToArray(iData1)
+        // 设置数据表的表头
+        arrTitle = ["FBillHead", "FCreateOrgId", "FCreateOrgName", "FNumber", "FUseOrgId", "FUseOrgName", "FName1033", "FName", "FTRADINGCURRID", "FTRADINGCURRName", "FPriority"]
+        // 构建数据表
+        objDatatable = Datatable.BuildDataTable(iData1, arrTitle)
+        // 拆分数据表A列~H列
+        objDatatable1 = Datatable.SelectDataTableColumns(objDatatable, ["FBillHead", "FCreateOrgId", "FCreateOrgName", "FNumber", "FUseOrgId", "FUseOrgName", "FName1033", "FName"])
+        objDatatable1 = Datatable.GetDataTableByArray(objDatatable1, false)
+        // 拆分数据表结算币别
+        objDatatable2 = Datatable.SelectDataTableColumns(objDatatable, ["FTRADINGCURRID", "FTRADINGCURRName"])
+        objDatatable2 = Datatable.GetDataTableByArray(objDatatable2, false)
+        // 拆分数据表客户优先级
+        objDatatable3 = Datatable.SelectDataTableColumns(objDatatable, ["FPriority"])
+        objDatatable3 = Datatable.GetDataTableByArray(objDatatable3, false)
+
+        objExcelWorkBook = Excel.Open(@res"资金部\\模板文件\\客户引入模板.xlsx", true, "Excel", "", "")
+        // 清理旧行
+        For i = 3 To Excel.GetRowsCount(objExcelWorkBook, "客户#基本信息(FBillHead)")
+            Excel.DeleteRow(objExcelWorkBook, "客户#基本信息(FBillHead)", "A3", false)
+        Next
+        Excel.WriteRow(objExcelWorkBook, "客户#基本信息(FBillHead)", "A3", objDatatable1, false)
+        // 批量填充结算币别
+        Excel.WriteRow(objExcelWorkBook, "客户#基本信息(FBillHead)", "AR3", objDatatable2, false)
+        // 批量填充客户优先级
+        Excel.WriteRow(objExcelWorkBook, "客户#基本信息(FBillHead)", "BQ3", objDatatable3, false)
+        Excel.SaveAs(objExcelWorkBook, filePath, "客户" & day, "xlsx")
+        Excel.Close(objExcelWorkBook, true)
+    End If
+
+    // 标记已导出
+    iRet = Database.ExecuteSQL(objDatabase, "update t_baseinfo set f_Remark=NOW() where f_DataType='客户' and f_Remark is null", {"args": []})
+
+    // 校验客户是否已全部导入
+    iData1 = Database.QueryAll(objDatabase, "select 1 from t_baseinfo a, t_baseinfo b where a.f_SystemType=b.f_SystemType and a.f_DataType='组织' and b.f_DataType='客户' and b.f_Remark is null ", {"rdict": false, "args": []})
+    If Set.Count(iData1) <> 0
+        Log.Info("客户信息未完全导入，终止流程")
+        Database.CloseDB(objDatabase)
+        Return "客户信息未完全导入"
+    End If
+
+    Log.Info("3.文件生成与输出-生成新增收款单的文件")
+    // 收款单：从实际数据月份取，不用 lastMonth
+    iData2 = Database.QueryAll(objDatabase, "select CONCAT(t1.f_Flowtime,t1.f_OppAccount) FBillHead, 'SKDLX01_SYS' FBillTypeID,'销售收款单' FBillTypeName,t4.f_StandardCode FPAYORGID,t4.f_StandardName FPAYORGName,t1.f_Flowtime FDATE,'客户' FCONTACTUNITTYPE, t2.f_StandardCode FCONTACTUNIT, t1.f_OppAccountName FCONTACTUNITName,'PRE001' FCURRENCYID,'人民币' FCURRENCYName,'1' FEXCHANGERATE,CONCAT(t1.f_Flowtime,t1.f_OppAccount) FRECEIVEBILLENTRY,t3.f_StandardCode FSETTLETYPEID,t1.f_Settlement FSETTLETYPEName,'SFKYT01_SYS' FPURPOSEID,'销售收款' FPURPOSEName,t1.f_InAmount FRECTOTALAMOUNTFOR,t1.f_OurAccount FACCOUNTID,t1.f_OurAccountName FACCOUNTName,CONCAT(t1.f_Flowtime,'收到',t1.f_OurAccountName,t1.f_InAmount,'元') FCOMMENT from (select left(f_Flowtime,10) f_Flowtime,f_OurAccount,f_OurAccountName,f_OppAccount,f_OppAccountName,f_OutAmount,f_Settlement,sum(f_InAmount) f_InAmount from t_flowfund_zj where left(f_Flowtime,7) in (select distinct left(f_Flowtime,7) from t_flowfund_zj where f_IsReceipt='Y') and f_IsReceipt='Y' and ifnull(f_Received,'')='' group by left(f_Flowtime,10),f_OurAccount,f_OurAccountName,f_OppAccount,f_OppAccountName,f_OutAmount,f_Settlement) t1 inner join t_baseinfo t2 on t1.f_OppAccountName=t2.f_StandardName and t2.f_DataType='客户' left join t_baseinfo t3 on t1.f_Settlement=t3.f_StandardName and t3.f_DataType='结算方式' left join t_baseinfo t4 on t3.f_SystemType=t4.f_SystemType and t4.f_DataType='组织' ", {"rdict": false, "args": []})
+    If Set.Count(iData2) >= 1
+        TracePrint "生成收款单文件，共" & CStr(Set.Count(iData2)) & "条"
+        iData2 = Set.ToArray(iData2)
+        arrTitle = ["FBillHead","FBillTypeID","FBillTypeName","FPAYORGID","FPAYORGName","FDATE","FCONTACTUNITTYPE","FCONTACTUNIT","FCONTACTUNITName","FCURRENCYID","FCURRENCYName","FEXCHANGERATE","FRECEIVEBILLENTRY","FSETTLETYPEID","FSETTLETYPEName","FPURPOSEID","FPURPOSEName","FRECTOTALAMOUNTFOR","FACCOUNTID","FACCOUNTName","FCOMMENT"]
+        objDatatable = Datatable.BuildDataTable(iData2, arrTitle)
+
+        objExcelWorkBook = Excel.Open(@res"资金部\\模板文件\\收款单引入模板.xlsx", true, "Excel", "", "")
+
+        // A-C 列
+        objDatatable1 = Datatable.SelectDataTableColumns(objDatatable, ["FBillHead","FBillTypeID","FBillTypeName"])
+        objDatatable1 = Datatable.GetDataTableByArray(objDatatable1, false)
+        Excel.WriteRow(objExcelWorkBook, "收款单#单据头(FBillHead)", "A3", objDatatable1, false)
+
+        // E~J 列: 组织 (E=G=I, F=H=J)
+        objDatatable2 = Datatable.SelectDataTableColumns(objDatatable, ["FPAYORGID","FPAYORGName"])
+        objDatatable2 = Datatable.GetDataTableByArray(objDatatable2, false)
+        Excel.WriteRow(objExcelWorkBook, "收款单#单据头(FBillHead)", "E3", objDatatable2, false)
+        Excel.WriteRow(objExcelWorkBook, "收款单#单据头(FBillHead)", "G3", objDatatable2, false)
+        Excel.WriteRow(objExcelWorkBook, "收款单#单据头(FBillHead)", "I3", objDatatable2, false)
+
+        // K 列: 日期
+        objDatatable3 = Datatable.SelectDataTableColumns(objDatatable, ["FDATE"])
+        objDatatable3 = Datatable.GetDataTableByArray(objDatatable3, false)
+        Excel.WriteRow(objExcelWorkBook, "收款单#单据头(FBillHead)", "K3", objDatatable3, false)
+
+        // L~Q 列: 客户 (L=O, M=P, N=Q)
+        objDatatable4 = Datatable.SelectDataTableColumns(objDatatable, ["FCONTACTUNITTYPE","FCONTACTUNIT","FCONTACTUNITName"])
+        objDatatable4 = Datatable.GetDataTableByArray(objDatatable4, false)
+        Excel.WriteRow(objExcelWorkBook, "收款单#单据头(FBillHead)", "L3", objDatatable4, false)
+        Excel.WriteRow(objExcelWorkBook, "收款单#单据头(FBillHead)", "O3", objDatatable4, false)
+
+        // R~W 列: 币别汇率 (R=U, S=V, T=W)
+        objDatatable5 = Datatable.SelectDataTableColumns(objDatatable, ["FCURRENCYID","FCURRENCYName","FEXCHANGERATE"])
+        objDatatable5 = Datatable.GetDataTableByArray(objDatatable5, false)
+        Excel.WriteRow(objExcelWorkBook, "收款单#单据头(FBillHead)", "R3", objDatatable5, false)
+        Excel.WriteRow(objExcelWorkBook, "收款单#单据头(FBillHead)", "U3", objDatatable5, false)
+
+        // AK~AO 列
+        objDatatable6 = Datatable.SelectDataTableColumns(objDatatable, ["FRECEIVEBILLENTRY","FSETTLETYPEID","FSETTLETYPEName","FPURPOSEID","FPURPOSEName"])
+        objDatatable6 = Datatable.GetDataTableByArray(objDatatable6, false)
+        Excel.WriteRow(objExcelWorkBook, "收款单#单据头(FBillHead)", "AK3", objDatatable6, false)
+
+        // AS,AT,BZ,CA 列: 金额
+        objDatatable7 = Datatable.SelectDataTableColumns(objDatatable, ["FRECTOTALAMOUNTFOR"])
+        objDatatable7 = Datatable.GetDataTableByArray(objDatatable7, false)
+        Excel.WriteRow(objExcelWorkBook, "收款单#单据头(FBillHead)", "AS3", objDatatable7, false)
+        Excel.WriteRow(objExcelWorkBook, "收款单#单据头(FBillHead)", "AT3", objDatatable7, false)
+        Excel.WriteRow(objExcelWorkBook, "收款单#单据头(FBillHead)", "BZ3", objDatatable7, false)
+        Excel.WriteRow(objExcelWorkBook, "收款单#单据头(FBillHead)", "CA3", objDatatable7, false)
+
+        // AX~AY 列: 银行账户
+        objDatatable8 = Datatable.SelectDataTableColumns(objDatatable, ["FACCOUNTID","FACCOUNTName"])
+        objDatatable8 = Datatable.GetDataTableByArray(objDatatable8, false)
+        Excel.WriteRow(objExcelWorkBook, "收款单#单据头(FBillHead)", "AX3", objDatatable8, false)
+
+        // BH 列: 备注
+        objDatatable9 = Datatable.SelectDataTableColumns(objDatatable, ["FCOMMENT"])
+        objDatatable9 = Datatable.GetDataTableByArray(objDatatable9, false)
+        Excel.WriteRow(objExcelWorkBook, "收款单#单据头(FBillHead)", "BH3", objDatatable9, false)
+
+        Excel.SaveAs(objExcelWorkBook, filePath, "收款单" & day, "xlsx")
+        Excel.Close(objExcelWorkBook, true)
+    End If
+
+    Log.Info("4.文件生成与输出-反写状态")
+    dTime = Time.Now()
+    dTime = Time.Format(dTime, "yyyy-mm-dd hh:mm:ss")
+    iRet = Database.ExecuteSQL(objDatabase, "update t_processmain set f_Finish3='" & dTime & "' where f_Process_ID='" & PROCESS_ID & "' and f_date='" & f_Date & "' ", {"args": []})
+    Database.CloseDB(objDatabase)
+    Log.Info("===============文件生成与输出结束===============")
+    Return ""
+Catch ex
+    TracePrint ex
+    lib_bak.组件_MySql错误日志记录(ex, PROCESS_ID, hostMsg, userMsg, passwordMsg, databaseMsg)
+End Try

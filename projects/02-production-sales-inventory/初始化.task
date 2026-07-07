@@ -1,0 +1,36 @@
+Dim iRet,sRet,bRet
+Rem "创建人：王元霖"
+Rem "创建日期：2025-12-30"
+Rem "业务描述：1.关闭网页及所有窗口；2.关闭excel进程"
+Try 3
+Log.Info("===============初始化流程开始===============")
+//设置重试次数公共变量初始值
+	retryCount = 0
+Log.Info("初始化-关闭所有网页浏览器和所有窗口")
+App.Kill("Chrome.exe")
+Log.Info("初始化-关闭excel进程")
+App.Kill("EXCEL.exe")
+
+App.Kill("outLook.exe")
+iPID = App.Start("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Outlook 2016.lnk", 0, 1)
+Delay(5000)
+
+bRet = UiElement.Exists(@ui"窗口_Windows安全中心",{"bContinueOnError":false,"iDelayAfter":300,"iDelayBefore":200,"bWaitDOMReady":true})
+If bRet 
+    
+Keyboard.InputPwd(@ui"文字1","s8VSrYQDQabz03wsWjxthQ==",true,20,10000,{"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 500, "bSetForeground": true, "sSimulate": "message", "bValidate": false, "bClickBeforeInput": false})
+Mouse.Action(@ui"复选框","left","click",10000,{"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [],"sSimulate": "simulate", "bMoveSmoothly": false})
+Mouse.Action(@ui"按钮","left","click",10000,{"bContinueOnError": false, "iDelayAfter": 300, "iDelayBefore": 200, "bSetForeground": true, "sCursorPosition": "Center", "iCursorOffsetX": 0, "iCursorOffsetY": 0, "sKeyModifiers": [],"sSimulate": "simulate", "bMoveSmoothly": false})
+End If
+App.Kill("outLook.exe")
+Log.Info("===============初始化流程结束===============")
+Catch ex
+    Log.Error(ex)
+    Dim ip_server = Sys.Command("ipconfig")
+    Dim ipv4 = Regex.FindStr(ip_server,"(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})",0)
+    Dim dTime = Time.Now()
+    Dim Gdtime = Time.Format(dTime,"yyyy-mm-dd hh:mm:ss")
+    Dim objDatabase = Database.CreateDB("MySQL",{"host": "10.44.76.35", "port": "3306", "user": "rpa","password": "Q3/L3z18Y3rj1DW0C8vuuQ==","database": "RPA","charset": "utf8"})
+    Dim count = Database.ExecuteSQL(objDatabase ,"INSERT INTO t_rpa_exception_log(f_DepName,f_Server,f_Process_ID,f_Task,f_Line,f_Msg,f_Time) VALUES(%s,%s,%s,%s,%s,%s,%s)", {"args":  ["经管部",ipv4,Process_ID,ex["File"],ex["Line"],ex["Message"],Gdtime]})
+    Database.CloseDB(objDatabase)
+End Try

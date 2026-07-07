@@ -1,0 +1,30 @@
+Dim objRet
+cwbbhb = Excel.Open(@res"财务报表与财务分析.xlsx", true, "Excel", "", "")
+
+// 营业利润率 = 营业利润/营业收入
+Excel.WriteCell(cwbbhb, "盈利能力分析", "B2", "=利润表!F17/利润表!F4", false)
+Excel.WriteCell(cwbbhb, "盈利能力分析", "C2", "=利润表!J17/利润表!J4", false)
+Excel.WriteCell(cwbbhb, "盈利能力分析", "D2", "=(C2-B2)/B2", false)
+
+// 销售利润率 = 净利润/营业收入
+Excel.WriteCell(cwbbhb, "盈利能力分析", "B3", "=利润表!F23/利润表!F4", false)
+Excel.WriteCell(cwbbhb, "盈利能力分析", "C3", "=利润表!J23/利润表!J4", false)
+Excel.WriteCell(cwbbhb, "盈利能力分析", "D3", "=(C3-B3)/B3", false)
+
+// 成本费用利润率 = 净利润/成本费用总额
+Excel.WriteCell(cwbbhb, "盈利能力分析", "B4", "=利润表!F23/SUM(利润表!F6:利润表!F11)", false)
+Excel.WriteCell(cwbbhb, "盈利能力分析", "C4", "=利润表!J23/SUM(利润表!J6:利润表!J11)", false)
+Excel.WriteCell(cwbbhb, "盈利能力分析", "D4", "=(C4-B4)/B4", false)
+
+// 净资产收益率 = 净利润/平均净资产
+Excel.WriteCell(cwbbhb, "盈利能力分析", "B5", "=利润表!F23/((资产负债表!B94+资产负债表!F94)/2)", false)
+Excel.WriteCell(cwbbhb, "盈利能力分析", "C5", "=利润表!J23/((资产负债表!F94+资产负债表!J94)/2)", false)
+Excel.WriteCell(cwbbhb, "盈利能力分析", "D5", "=(C5-B5)/B5", false)
+
+// 总资产报酬率 = (利润总额+财务费用)/平均总资产
+Excel.WriteCell(cwbbhb, "盈利能力分析", "B6", "=(利润表!F21+利润表!F10)/((资产负债表!B48+资产负债表!F48)/2)", false)
+Excel.WriteCell(cwbbhb, "盈利能力分析", "C6", "=(利润表!J21+利润表!J10)/((资产负债表!F48+资产负债表!J48)/2)", false)
+Excel.WriteCell(cwbbhb, "盈利能力分析", "D6", "=(C6-B6)/B6", false)
+
+Excel.Save(cwbbhb)
+Excel.Close(cwbbhb, true)

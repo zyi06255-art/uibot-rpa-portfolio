@@ -1,0 +1,354 @@
+// ===== 生成日报（ZJB0001-001）=====
+
+Dim i, t_processinfo, iRet, objDatabase, dbConnected
+i = 0
+t_processinfo = 0
+dbConnected = false
+
+Try
+    objDatabase = Database.CreateDB("MySQL",{"host": "127.0.0.1", "port": "3306", "user": "root","password": "root","database": "rpa_bank_flow","charset": "utf8"})
+    dbConnected = true
+    TracePrint " MySQL连接成功"
+Catch ex
+    Log.Error " MySQL连接失败: " & CStr(ex)
+End Try
+
+Do While i < 3 And dbConnected
+    i = i + 1
+    TracePrint "=== 第 " & CStr(i) & " 次执行 ==="
+
+    Try
+        iRet = Database.QueryOne(objDatabase ,"SELECT COUNT(*) FROM t_processinfo WHERE f_Process_ID='ZJB0001-001' AND f_Process_Block='流程汇总' AND f_Finish4 IS NOT NULL", {"rdict": false, "args": []})
+        t_processinfo = CInt(iRet[0])
+    Catch ex
+        Delay 1000
+        t_processinfo = 0
+    End Try
+    If t_processinfo = 1
+        Break
+    End If
+
+    If t_processinfo <> 1
+        Dim pre2, pre3
+    pre2 = 0
+    pre3 = 0
+    Try
+        iRet = Database.QueryOne(objDatabase ,"SELECT COUNT(*) FROM t_processinfo WHERE f_Process_ID='ZJB0001-001' AND f_Process_Block='流程汇总' AND f_Finish2 IS NOT NULL", {"rdict": false, "args": []})
+        pre2 = CInt(iRet[0])
+    Catch ex
+    End Try
+    Try
+        iRet = Database.QueryOne(objDatabase ,"SELECT COUNT(*) FROM t_processinfo WHERE f_Process_ID='ZJB0001-001' AND f_Process_Block='流程汇总' AND f_Finish3 IS NOT NULL", {"rdict": false, "args": []})
+        pre3 = CInt(iRet[0])
+    Catch ex
+    End Try
+    If pre2 <> 1 Or pre3 <> 1
+        Log.Error " 前置未完成"
+        Delay 1000
+        Break
+    End If
+
+    If pre2 = 1 And pre3 = 1
+        Try
+            Database.ExecuteSQL(objDatabase ,"UPDATE t_processinfo SET f_Step4='Excel日报生成', f_End_Time=NOW(), f_Update_Time=NOW() WHERE f_Process_ID='ZJB0001-001' AND f_Process_Block='流程汇总'", {"args": []})
+    Catch ex
+    End Try
+
+    Dim allSuccess
+    allSuccess = true
+
+    Try
+        File.CreateFolder("D:\\laiye\\ZJRB\\日报")
+    Catch ex
+    End Try
+
+    // 获取公司列表
+    Dim acctTotal, acctIdx
+    acctTotal = 0
+    Try
+        iRet = Database.QueryOne(objDatabase ,"SELECT COUNT(DISTINCT f_Belong) FROM t_flowFund_zj WHERE f_Process_ID='ZJB0001-001'", {"rdict": false, "args": []})
+        acctTotal = CInt(iRet[0])
+        TracePrint " 公司数: " & CStr(acctTotal)
+    Catch ex
+        allSuccess = false
+    End Try
+
+    For acctIdx = 1 To acctTotal
+        Dim acctRet, curAcct, curBelong, filePath
+        acctRet = ""
+        Try
+            acctRet = Database.QueryOne(objDatabase ,"SELECT f_Belong FROM t_flowFund_zj WHERE f_Process_ID='ZJB0001-001' GROUP BY f_Belong ORDER BY f_Belong LIMIT 1 OFFSET " & CStr(acctIdx - 1), {"rdict": false, "args": []})
+            curBelong = Replace(Replace(CStr(acctRet[0]), "'", ""), ",", "")
+        Catch ex
+            Break
+        End Try
+
+        filePath = "D:\\laiye\\ZJRB\\日报\\" & curBelong & ".xlsx"
+        TracePrint "--- " & curBelong & " ---"
+
+        If File.FileExists(filePath)
+            Try
+                File.Delete(filePath)
+            Catch ex
+                TracePrint " 文件占用: " & CStr(ex)
+                allSuccess = false
+                Break
+            End Try
+        End If
+
+        Dim objExcel
+        Try
+            objExcel = Excel.Open(filePath, true, "WPS", "", "")
+        Catch ex
+            allSuccess = false
+            Break
+        End Try
+
+        Dim defSheet
+        defSheet = "Sheet1"
+        Try
+            Dim ds
+            ds = Excel.GetSheetsName(objExcel)
+            If IsArray(ds)
+                defSheet = CStr(ds[0])
+            End If
+        Catch ex
+        End Try
+
+        Dim mi
+        For mi = 1 To 12
+            Dim moTotal, moRet
+            moTotal = 0
+            Try
+                moRet = Database.QueryOne(objDatabase ,"SELECT COUNT(*) FROM t_flowFund_zj WHERE f_Process_ID='ZJB0001-001' AND f_Belong='" & curBelong & "' AND MONTH(flow_date)=" & CStr(mi), {"rdict": false, "args": []})
+                moTotal = CInt(moRet[0])
+            Catch ex
+            End Try
+
+            If moTotal = 0
+                Break
+            End If
+
+            Dim sheetTitle
+            sheetTitle = CStr(mi) & "月"
+            Try
+                Excel.CreateSheet(objExcel, sheetTitle, "after", false)
+            Catch ex
+            End Try
+// For Each ym In 去重年份月份列表
+//     year  = Left(ym, 4)
+//     month = Right(ym, 2)
+//     sheetTitle = year & "年" & month & "月"   // "2025年12月"
+//     WHERE YEAR(flow_date)=year AND MONTH(flow_date)=mont
+            Dim sheetData
+            sheetData = []
+
+            // 标题行
+            Push sheetData, ["资金部 - 资金日报", "", "", "", "", "", "", "", "", "", "", "", "", ""]
+            // 表头行
+            Push sheetData, ["序号", "日期", "公司名称", "银行账号", "转入金额", "转出金额", "余额", "对方单位", "对方账号", "摘要", "币种", "收入合计", "支出合计", "净利润"]
+
+            Dim curDate, daySeq
+            curDate = ""
+            daySeq = 0
+
+            // 预查日合计
+            Dim daySumDict, daySumRows, di
+            daySumDict = {}
+            Try
+                daySumRows = Database.QueryAll(objDatabase ,"SELECT flow_date, SUM(f_InAmount), SUM(f_OutAmount), SUM(f_InAmount)-SUM(f_OutAmount) FROM t_flowFund_zj WHERE f_Process_ID='ZJB0001-001' AND f_Belong='" & curBelong & "' AND MONTH(flow_date)=" & CStr(mi) & " GROUP BY flow_date", {"rdict": false, "args": []})
+                If IsArray(daySumRows)
+                    For di = 0 To UBound(daySumRows)
+                        daySumDict[CStr(daySumRows[di][0])] = [CStr(daySumRows[di][1]), CStr(daySumRows[di][2]), CStr(daySumRows[di][3])]
+                    Next
+                End If
+            Catch ex
+            End Try
+
+            Dim allRows, mri, totalRows
+            totalRows = -1
+            Try
+                allRows = Database.QueryAll(objDatabase ,"SELECT flow_date, f_Flowtime, f_OurAccount, f_InAmount, f_OutAmount, f_Balance, f_OppAccount, f_OppName, f_Abstract, f_Belong, (f_Balance - f_InAmount + f_OutAmount) AS prev_balance FROM t_flowFund_zj WHERE f_Process_ID='ZJB0001-001' AND f_Belong='" & curBelong & "' AND MONTH(flow_date)=" & CStr(mi) & " ORDER BY flow_date, f_Flowtime", {"rdict": false, "args": []})
+                If IsArray(allRows)
+                    totalRows = UBound(allRows)
+                End If
+            Catch ex
+            End Try
+            // 余额链重排：同时间戳用链确定先后
+            // 余额链重排：同时间戳按 prev_balance → balance 链条排序
+            Dim si
+            si = 0
+            Do While si < totalRows
+                Dim gs, ge, gi
+                gs = si
+                gi = si
+                Do While gi < totalRows
+                    If CStr(allRows[gi][0]) = CStr(allRows[gi + 1][0]) And CStr(allRows[gi][1]) = CStr(allRows[gi + 1][1])
+                        gi = gi + 1
+                    Else
+                        Break
+                    End If
+                Loop
+                ge = gi
+                si = ge + 1
+
+                If ge > gs
+                    // 同时间戳组 gs..ge，用余额链重排
+                    Dim gn, gk, firstIdx, sortedArr, curBal, nxtIdx
+                    firstIdx = -1
+                    For gn = gs To ge
+                        Dim isFirst, grpPrev
+                        isFirst = true
+                        grpPrev = CStr(allRows[gn][10])
+                        For gk = gs To ge
+                            If gk <> gn And CStr(allRows[gk][5]) = grpPrev
+                                isFirst = false
+                                Break
+                            End If
+                        Next
+                        If isFirst
+                            firstIdx = gn
+                            Break
+                        End If
+                    Next
+                    If firstIdx = -1
+                        firstIdx = gs
+                    End If
+
+                    // 沿链收集顺序：当前余额 → 查找 prev=当前余额 的行
+                    sortedArr = []
+                    nxtIdx = firstIdx
+                    Do While nxtIdx >= 0
+                        Push sortedArr, allRows[nxtIdx]
+                        curBal = CStr(allRows[nxtIdx][5])
+                        nxtIdx = -1
+                        For gk = gs To ge
+                            If CStr(allRows[gk][10]) = curBal And gk <> nxtIdx
+                                nxtIdx = gk
+                                Break
+                            End If
+                        Next
+                        If UBound(sortedArr) >= (ge - gs)
+                            Break
+                        End If
+                    Loop
+
+                    // 写回
+                    For gn = 0 To UBound(sortedArr)
+                        allRows[gs + gn] = sortedArr[gn]
+                    Next
+                End If
+            Loop
+
+            For mri = 0 To totalRows
+                Dim rRow, rd, rAcctN, rIn, rOut, rBal, rOpp, rOppN, rAbs, rCurr, rBel, rFT, rPB
+                Try
+                    rRow = allRows[mri]
+                    rd = CStr(rRow[0])
+                    rFT = CStr(rRow[1])
+                    rAcctN = CStr(rRow[2])
+                    rIn = CStr(rRow[3])
+                    rOut = CStr(rRow[4])
+                    rBal = CStr(rRow[5])
+                    rOpp = CStr(rRow[6])
+                    rOppN = CStr(rRow[7])
+                    rAbs = Replace(Replace(CStr(rRow[8]), "'", ""), ",", "")
+                    rBel = Replace(Replace(CStr(rRow[9]), "'", ""), ",", "")
+                Catch ex
+                    Break
+                End Try
+
+                rCurr = "人民币"
+                If Regex.Test(rAbs, "币种:")
+                    rCurr = Regex.FindStr(rAbs, "币种:(\\S+)", 1)
+                    Dim tmpAbs
+                    tmpAbs = Regex.FindStr(rAbs, "(.+?)\\s*\\|\\s*币种", 1)
+                    If tmpAbs <> ""
+                        rAbs = tmpAbs
+                    End If
+                End If
+
+                If rd <> curDate And curDate <> ""
+                    Dim dIn, dOut, dNet, sumArr
+                    dIn = ""
+                    dOut = ""
+                    dNet = ""
+                    sumArr = daySumDict[curDate]
+                    If IsArray(sumArr)
+                        dIn = sumArr[0]
+                        dOut = sumArr[1]
+                        dNet = sumArr[2]
+                    End If
+                    Push sheetData, ["日合计", curDate, "", "", "", "", "", "", "", "", "", dIn, dOut, dNet]
+                    daySeq = 0
+                End If
+                curDate = rd
+                daySeq = daySeq + 1
+
+                Dim aText
+                aText = "'" & rAcctN
+
+                Push sheetData, [CStr(daySeq), rd, rBel, aText, rIn, rOut, rBal, rOppN, rOpp, rAbs, rCurr, "", "", ""]
+            Next
+
+            // 最后一日合计
+            If curDate <> ""
+                Dim dIn2, dOut2, dNet2, sumArr2
+                dIn2 = ""
+                dOut2 = ""
+                dNet2 = ""
+                sumArr2 = daySumDict[curDate]
+                If IsArray(sumArr2)
+                    dIn2 = sumArr2[0]
+                    dOut2 = sumArr2[1]
+                    dNet2 = sumArr2[2]
+                End If
+                Push sheetData, ["日合计", curDate, "", "", "", "", "", "", "", "", "", dIn2, dOut2, dNet2]
+            End If
+
+            // 一次性写入整个区域
+            Excel.WriteRange(objExcel, sheetTitle, "A1", sheetData)
+        Next
+
+        // 删除默认 Sheet1
+        Try
+            Excel.DeleteSheet(objExcel, defSheet, false)
+        Catch ex
+        End Try
+
+        Try
+            Excel.Save(objExcel)
+            TracePrint " " & curBelong & " 保存成功"
+        Catch ex
+            allSuccess = false
+        End Try
+        Try
+            Excel.Close(objExcel, false)
+        Catch ex
+        End Try
+    Next
+
+    If allSuccess
+        Try
+            Database.ExecuteSQL(objDatabase ,"UPDATE t_processinfo SET f_Finish4=NOW(), f_End_Time=NOW(), f_Update_Time=NOW() WHERE f_Process_ID='ZJB0001-001' AND f_Process_Block='流程汇总'", {"args": []})
+            t_processinfo = 1
+        Catch ex
+            t_processinfo = 0
+        End Try
+    End If
+
+    If allSuccess = false
+        Log.Error " 失败"
+        Delay 1000
+    End If
+    End If
+    End If
+Loop
+
+If dbConnected = false
+    Log.Error " MySQL连接失败"
+ElseIf i >= 3 And t_processinfo <> 1
+    Log.Error " 3次全败"
+Else
+    TracePrint " 流程执行成功"
+End If

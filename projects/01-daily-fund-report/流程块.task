@@ -1,0 +1,3 @@
+Dim sText
+sText = OCR.ImageOCR('''C:\Users\DELL\Desktop\发票01.png''',"baidu1", "", "", 10000)
+sText = LocalOCR.ImageOCR('''C:\Users\DELL\Desktop\发票01.png''',"SceneText", 10000)

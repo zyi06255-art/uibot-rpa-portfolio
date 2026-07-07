@@ -1,0 +1,31 @@
+// ===== 错误日志命令库 =====
+
+Function LogError(processId, processBlock, errMsg, retryCount)
+    Dim objDatabase, result
+    result = 0
+    Try
+        objDatabase = Database.CreateDB("MySQL", {"host": "127.0.0.1", "port": "3306", "user": "root", "password": "root", "database": "rpa_bank_flow", "charset": "utf8"})
+        Database.ExecuteSQL(objDatabase, "INSERT INTO t_rpa_exception_log (f_DeptName, f_Server, f_Process_ID, f_Task, f_Line, f_Msg, f_Time, f_CreateTime) VALUES ('资金日报', '', '" & processId & "', '" & processBlock & "', " & CStr(retryCount) & ", '" & Replace(errMsg, "'", "") & "', NOW(), NOW())", {"args": []})
+        result = 1
+        TracePrint " [命令库] 异常日志已写入: " & processId & " / " & processBlock
+    Catch ex
+        Log.Error " [命令库] 写入异常日志失败: " & CStr(ex)
+        result = 0
+    End Try
+    LogError = result
+End Function
+
+Function LogFinalFail(processId, processBlock)
+    Dim objDatabase, result
+    result = 0
+    Try
+        objDatabase = Database.CreateDB("MySQL", {"host": "127.0.0.1", "port": "3306", "user": "root", "password": "root", "database": "rpa_bank_flow", "charset": "utf8"})
+        Database.ExecuteSQL(objDatabase, "INSERT INTO t_rpa_exception_log (f_DeptName, f_Server, f_Process_ID, f_Task, f_Line, f_Msg, f_Time, f_CreateTime) VALUES ('资金日报', '', '" & processId & "', '" & processBlock & "', 0, '3次重试均失败', NOW(), NOW())", {"args": []})
+        result = 1
+        TracePrint " [命令库] 最终失败日志已写入: " & processId & " / " & processBlock
+    Catch ex
+        Log.Error " [命令库] 写入最终失败日志异常: " & CStr(ex)
+        result = 0
+    End Try
+    LogFinalFail = result
+End Function

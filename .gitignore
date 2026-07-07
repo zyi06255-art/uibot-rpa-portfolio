@@ -1,0 +1,72 @@
+# ===== UiBot RPA Platform Files (Auto-generated / Binary) =====
+*.taskc
+*.flowc
+*.prjp
+*.prjpc
+*.prj
+*.cme
+*.lib
+*.libc
+*.dat
+.storemeta
+.file-hashes.json
+layout.json
+config.json
+
+# ===== Runtime Artifacts =====
+log/
+*.log
+sessions/
+*.pyc
+__pycache__/
+*.pyo
+
+# ===== IDE / Editor =====
+.vscode/
+.idea/
+*.code-workspace
+pyrightconfig.json
+workspace/__workflow__/
+workspace/preferences/
+workspace/使用指南.md
+workspace/项目需求描述.md
+
+# ===== OS Files =====
+.DS_Store
+Thumbs.db
+~$*
+
+# ===== Dependencies =====
+Python312/
+node_modules/
+*.whl
+site-packages/
+
+# ===== Archives / Duplicates =====
+*.zip
+*.rar
+
+# ===== Sensitive Data =====
+*.env
+*.pem
+*.key
+credentials/
+
+# ===== Generated Output =====
+res/**/output/
+res/**/generated/
+ocr_results/
+
+# ===== Original source directories (portfolio uses projects/ instead) =====
+PDF测试识别/
+产销存日报/
+产销存日报测试/
+发票查验/
+学生成绩/
+流程项目/
+测试/
+测试识别/
+自动导入收款单-流程一/
+课程作业/
+财务233岑婉婵课程大作业/
+资金日报/

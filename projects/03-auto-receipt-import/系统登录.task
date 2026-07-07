@@ -1,0 +1,63 @@
+/*lib_bak.组件_MySql错误日志记录("","","","","","")
+1.系统登录-调用命令库登录
+2.系统登录-登录失败反馈信息
+*/
+PROCESS_ID = "ZJB0002"
+hostMsg = "127.0.0.1"
+userMsg = "root"
+passwordMsg = "root"
+databaseMsg = "rpa"
+Dim objDatabase, iRet, result, OrgName, Url, Account, Pwd, msg, sRet, dTime, f_Date, lastMonth
+
+dTime = Time.Date()
+dTime = Time.DateAdd("d", -1, dTime)
+Dim year = Time.Format(dTime, "yyyy")
+Dim month = Time.Format(dTime, "mm")
+Dim day = Time.Format(dTime, "yyyy-mm-dd")
+f_Date = Time.Format(dTime, "yyyy-mm-dd")
+lastMonth = Time.Format(dTime, "yyyy-mm")
+objDatabase = Database.CreateDB("MySQL", {"host": hostMsg, "port": "3306", "user": userMsg, "password": passwordMsg, "database": databaseMsg, "charset": "utf8"})
+
+iRet = Database.QueryOne(objDatabase, "select 1 from t_processmain where f_Process_ID='" & PROCESS_ID & "' and f_Step4='系统操作' and IFNULL(f_Finish4,'')<>'' and f_Date='" & f_Date & "'", {"rdict": true, "args": []})
+If UBound(iRet) >= 0
+    Log.Info("系统操作已完成，退出当前流程")
+    Database.CloseDB(objDatabase)
+    Return "已完成"
+End If
+
+Try 3
+    Log.Info("===============系统登录开始===============")
+    Dim iData = Database.QueryOne(objDatabase, "select f_OrgName,f_Url,f_Account,f_Pwd from t_account where f_SysName='金蝶云星空' ", {"rdict": true, "args": []})
+    TracePrint iData
+    OrgName = iData["f_OrgName"]
+    Url = iData["f_Url"]
+    Account = iData["f_Account"]
+    Pwd = iData["f_Pwd"]
+    Log.Info("1.系统登录-调用命令库登录")
+    result = lib_bak.登录金蝶云星空(OrgName, Url, Account, Pwd)
+
+    TracePrint result
+    If Regex.Test(result, "密码错误") = True
+        Log.Info("2.系统登录-登录失败反馈信息")
+        msg = "系统登录提示密码错误，终止流程"
+        sRet = HTTP.PostJson("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=31bf65c4-1c54-417e-a289-d015d77ed490", {"msgtype": "markdown", "markdown": {"content": msg}}, 60000)
+        Database.CloseDB(objDatabase)
+        Exit()
+    End If
+    // 非成功状态也发送通知（可选）
+    If Regex.Test(result, "成功") = False
+        Log.Info("2.系统登录-登录失败反馈信息")
+        msg = "系统登录失败，" & result & "。退出当前流程"
+        sRet = HTTP.PostJson("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=31bf65c4-1c54-417e-a289-d015d77ed490", {"msgtype": "markdown", "markdown": {"content": msg}}, 60000)
+        Database.CloseDB(objDatabase)
+        Return msg
+    End If
+
+    Database.CloseDB(objDatabase)
+    Log.Info("===============系统登录结束===============")
+    Return ""
+Catch ex
+    TracePrint ex
+    lib_bak.组件_MySql错误日志记录(ex, PROCESS_ID, hostMsg, userMsg, passwordMsg, databaseMsg)
+End Try
+

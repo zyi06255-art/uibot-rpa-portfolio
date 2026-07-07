@@ -1,0 +1,162 @@
+// ===== 数据校验与入库（ZJB0001-001）=====
+
+Dim i, t_processinfo, iRet, objDatabase, dbConnected
+i = 0
+t_processinfo = 0
+dbConnected = false
+
+Try
+    objDatabase = Database.CreateDB("MySQL",{"host": "127.0.0.1", "port": "3306", "user": "root","password": "root","database": "rpa_bank_flow","charset": "utf8"})
+    dbConnected = true
+    TracePrint " MySQL连接成功"
+Catch ex
+    Log.Error " MySQL连接失败: " & CStr(ex)
+End Try
+
+Do While i < 3 And dbConnected And t_processinfo <> 1
+    i = i + 1
+    TracePrint "=== 第 " & CStr(i) & " 次执行 ==="
+
+    Try
+        iRet = Database.QueryOne(objDatabase ,"SELECT COUNT(*) FROM t_processinfo WHERE f_Process_ID='ZJB0001-001' AND f_Process_Block='流程汇总' AND f_Finish2 IS NOT NULL", {"rdict": false, "args": []})
+        t_processinfo = CInt(iRet[0])
+    Catch ex
+        Delay 1000
+        t_processinfo = 0
+    End Try
+    If t_processinfo = 1
+        TracePrint " 已完成"
+        Break
+    End If
+
+    If t_processinfo <> 1
+        Dim preStatus
+        preStatus = 0
+        Try
+            iRet = Database.QueryOne(objDatabase ,"SELECT COUNT(*) FROM t_processinfo WHERE f_Process_ID='ZJB0001-001' AND f_Process_Block='流程汇总' AND f_Finish1 IS NOT NULL", {"rdict": false, "args": []})
+            preStatus = CInt(iRet[0])
+        Catch ex
+        End Try
+        If preStatus <> 1
+            Log.Error " 前置节点(数据获取与存储)未完成"
+            Delay 1000
+            Break
+        End If
+
+        Try
+            Database.ExecuteSQL(objDatabase ,"UPDATE t_processinfo SET f_Step2='数据校验与入库', f_End_Time=NOW(), f_Update_Time=NOW() WHERE f_Process_ID='ZJB0001-001' AND f_Process_Block='流程汇总'", {"args": []})
+        Catch ex
+        End Try
+
+    Try
+        Database.ExecuteSQL(objDatabase ,"DELETE FROM t_flowFund_zj WHERE f_Process_ID='ZJB0001-001'", {"args": []})
+    Catch ex
+    End Try
+
+    Dim allSuccess
+    allSuccess = true
+
+    // 清洗：删掉日期不以20开头的脏行
+    Try
+        Database.ExecuteSQL(objDatabase ,"DELETE FROM tmp_flow_staging WHERE f_FlowDate NOT LIKE '202%%'", {"args": []})
+    Catch ex
+    End Try
+    Try
+        Database.ExecuteSQL(objDatabase ,"DELETE FROM tmp_flow_staging WHERE f_InAmount='0.00' AND f_OutAmount='0.00' AND f_Balance='0.00'", {"args": []})
+    Catch ex
+    End Try
+
+    // 校验1：我方账号非空
+    Dim vCount, errMsg
+    errMsg = ""
+    Try
+        iRet = Database.QueryOne(objDatabase ,"SELECT COUNT(*) FROM tmp_flow_staging WHERE f_OurAccount='' OR f_OurAccount='None'", {"rdict": false, "args": []})
+        vCount = CInt(iRet[0])
+        If vCount > 0
+            errMsg = errMsg & "账号为空:" & CStr(vCount) & "; "
+        End If
+    Catch ex
+        errMsg = errMsg & "账号校验异常; "
+    End Try
+
+    // 校验2：日期格式
+    Try
+        iRet = Database.QueryOne(objDatabase ,"SELECT COUNT(*) FROM tmp_flow_staging WHERE f_FlowDate NOT LIKE '202%%'", {"rdict": false, "args": []})
+        vCount = CInt(iRet[0])
+        If vCount > 0
+            errMsg = errMsg & "日期异常:" & CStr(vCount) & "; "
+        End If
+    Catch ex
+        errMsg = errMsg & "日期校验异常; "
+    End Try
+
+    // 校验3：金额全零
+    Try
+        iRet = Database.QueryOne(objDatabase ,"SELECT COUNT(*) FROM tmp_flow_staging WHERE f_InAmount='0.00' AND f_OutAmount='0.00' AND f_Balance='0.00'", {"rdict": false, "args": []})
+        vCount = CInt(iRet[0])
+        If vCount > 0
+            errMsg = errMsg & "金额全零:" & CStr(vCount) & "; "
+        End If
+    Catch ex
+        errMsg = errMsg & "金额校验异常; "
+    End Try
+
+    // 校验4：交易类型
+    Try
+        iRet = Database.QueryOne(objDatabase ,"SELECT COUNT(*) FROM tmp_flow_staging WHERE f_TransactionType NOT IN ('收入','支出')", {"rdict": false, "args": []})
+        vCount = CInt(iRet[0])
+        If vCount > 0
+            errMsg = errMsg & "类型异常:" & CStr(vCount) & "; "
+        End If
+    Catch ex
+    End Try
+
+    If errMsg <> ""
+        TracePrint " 校验问题: " & errMsg
+        Try
+            Database.ExecuteSQL(objDatabase ,"INSERT INTO t_rpa_exception_log (f_DeptName, f_Server, f_Process_ID, f_Task, f_Line, f_Msg, f_Time, f_CreateTime) VALUES ('资金日报','','ZJB0001-001','数据校验与入库',0,'" & Replace(errMsg, "'", "") & "',NOW(),NOW())", {"args": []})
+        Catch ex
+        End Try
+        allSuccess = false
+    Else
+        TracePrint " 校验通过"
+    End If
+
+    If allSuccess
+        Try
+            Database.ExecuteSQL(objDatabase ,"INSERT INTO t_flowFund_zj (f_FlowNo, f_Process_ID, f_Belong, f_OurAccount, f_OppAccount, f_OppName, f_Flowtime, f_InAmount, f_OutAmount, f_Balance, f_TransactionType, f_Abstract, f_CreateTime) SELECT CONCAT(f_OurAccount,'|',f_FlowDate,' ',IF(f_FlowTime='','00:00:00',f_FlowTime),'|',CAST(f_InAmount AS DECIMAL(18,2)),'|',CAST(f_OutAmount AS DECIMAL(18,2)),'|',CAST(f_Balance AS DECIMAL(18,2))), 'ZJB0001-001', f_Belong, f_OurAccount, f_OppAccount, f_OppName, CONCAT(f_FlowDate,' ',IF(f_FlowTime='','00:00:00',f_FlowTime)), CAST(f_InAmount AS DECIMAL(18,2)), CAST(f_OutAmount AS DECIMAL(18,2)), CAST(f_Balance AS DECIMAL(18,2)), f_TransactionType, f_Abstract, NOW() FROM tmp_flow_staging ORDER BY f_FlowDate, f_FlowTime, row_id", {"args": []})
+            TracePrint " 入库成功"
+        Catch ex
+            TracePrint " 入库失败: " & CStr(ex)
+            allSuccess = false
+        End Try
+    End If
+
+    If allSuccess
+        Try
+            Database.ExecuteSQL(objDatabase ,"UPDATE t_processinfo SET f_Finish2=NOW(), f_End_Time=NOW(), f_Update_Time=NOW() WHERE f_Process_ID='ZJB0001-001' AND f_Process_Block='流程汇总'", {"args": []})
+            t_processinfo = 1
+        Catch ex
+            t_processinfo = 0
+            allSuccess = false
+        End Try
+    End If
+
+    If allSuccess = false
+        Log.Error " 失败重试"
+        Delay 1000
+    End If
+    End If
+Loop
+
+If dbConnected = false
+    Log.Error " MySQL连接失败"
+ElseIf i >= 3 And t_processinfo <> 1
+    Log.Error " 3次全败"
+    Try
+        Database.ExecuteSQL(objDatabase ,"INSERT INTO t_rpa_exception_log (f_DeptName, f_Server, f_Process_ID, f_Task, f_Line, f_Msg, f_Time, f_CreateTime) VALUES ('资金日报','','ZJB0001-001','数据校验与入库',0,'3次全败',NOW(),NOW())", {"args": []})
+    Catch ex
+    End Try
+Else
+    TracePrint " 流程执行成功"
+End If

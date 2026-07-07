@@ -1,0 +1,51 @@
+// =============================================
+// 流程块3.task — 初始化
+// =============================================
+
+g_init_ok = false
+g_error_msg = ""
+g_current_step = "初始化"
+g_exception_occurred = false
+g_exception_msg = ""
+g_retry_count = 0
+g_processed_count = 0
+g_total_count = 0
+
+Try
+    Dim imageDir = "D:\\laiye project\\学生成绩\\res\\学生成绩单\\"
+    Log.Info "[初始化] 图片目录: " & imageDir
+
+    Dim imageFiles = File.SearchFile(imageDir, "*.jpg", false)
+
+    If imageFiles = null
+        g_init_ok = false
+        g_error_msg = "[初始化] 图片目录无JPG文件"
+        Log.Error g_error_msg
+    Else
+        Dim fileCount = UBound(imageFiles) + 1
+        If fileCount <= 0
+            g_init_ok = false
+            g_error_msg = "[初始化] 图片目录无JPG文件"
+            Log.Error g_error_msg
+        Else
+            g_total_count = fileCount
+            Log.Info "[初始化] 找到 " & CStr(fileCount) & " 张成绩单图片"
+
+            Dim exePath = "E:\\qq\\UiBot 高级认证\\成绩分析系统\\成绩分析系统.exe"
+            If File.FileExists(exePath) = false
+                g_init_ok = false
+                g_error_msg = "[初始化] 成绩分析系统不存在"
+                Log.Error g_error_msg
+            Else
+                g_init_ok = true
+                Log.Info "[初始化] 所有检查通过"
+            End If
+        End If
+    End If
+Catch ex
+    g_init_ok = false
+    g_error_msg = "[初始化] 异常: " & CStr(ex)
+    g_exception_occurred = true
+    g_exception_msg = "[初始化] " & CStr(ex)
+    Log.Error g_error_msg
+End Try

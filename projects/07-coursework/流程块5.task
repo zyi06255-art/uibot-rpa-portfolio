@@ -1,0 +1,2 @@
+Dim bRet
+bRet = Mail.SendExt({"host":"smtp.qq.com","port":465,"ssl":true,"authentication":true,"user":"2724951641@qq.com","password":"fftppzqckbxddfhe"},"2724951641@qq.com","2724951641@qq.com","2724951641@qq.com","2724951641@qq.com","分析结果","程总好，这是财务指标分析结果，请您查收！",[@res"财务报表与财务分析.xlsx"])
